@@ -1,0 +1,2115 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Rekap & Jadwal Dokter - Multi Periode</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <!-- SheetJS for parsing Excel & CSV files -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen flex flex-col">
+
+    <!-- Top Header Navbar -->
+    <header class="bg-indigo-900 text-white shadow-md sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-4 py-3.5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-xl shadow-inner">
+                    <i class="fa-solid fa-stethoscope"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg leading-tight">Sistem Informasi & Jadwal Dokter</h1>
+                    <p class="text-xs text-indigo-300">Manajemen Absensi & Jadwal Tetap Praktik Klinik</p>
+                </div>
+            </div>
+
+            <!-- Tab Navigation Header -->
+            <div class="flex items-center bg-indigo-950/60 p-1 rounded-xl border border-indigo-700/50">
+                <button id="nav-tab-rekap" onclick="switchMainTab('rekap')" 
+                        class="px-4 py-2 rounded-lg text-xs font-semibold transition flex items-center gap-2 bg-indigo-600 text-white shadow-sm">
+                    <i class="fa-solid fa-clipboard-user"></i> Rekap Absensi
+                </button>
+                <button id="nav-tab-jadwal" onclick="switchMainTab('jadwal')" 
+                        class="px-4 py-2 rounded-lg text-xs font-semibold transition flex items-center gap-2 text-indigo-200 hover:text-white hover:bg-indigo-800/50">
+                    <i class="fa-solid fa-calendar-days"></i> Jadwal Tetap Praktik
+                </button>
+            </div>
+
+            <div class="flex items-center gap-2">
+                <button onclick="openSyncModal('absen')" class="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1.5 shadow-sm">
+                    <i class="fa-solid fa-cloud-arrow-down"></i> Sync Spreadsheet
+                </button>
+                <button onclick="openResetModal()" class="px-3 py-2 bg-indigo-800 hover:bg-indigo-700 text-indigo-200 text-xs font-semibold rounded-lg transition border border-indigo-700 flex items-center gap-1.5 shadow-sm">
+                    <i class="fa-solid fa-rotate-right"></i> Reset Data
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Toast Notification Banner -->
+    <div id="toast-notification" class="fixed bottom-5 right-5 z-50 hidden transform transition-all duration-300 translate-y-2 opacity-0">
+        <div class="bg-slate-900 text-white px-4 py-3 rounded-xl shadow-xl border border-slate-700 flex items-center gap-3 text-xs font-medium">
+            <i id="toast-icon" class="fa-solid fa-circle-check text-emerald-400 text-base"></i>
+            <span id="toast-message">Data berhasil diperbarui!</span>
+        </div>
+    </div>
+
+    <!-- Main Container -->
+    <main class="max-w-7xl mx-auto px-4 py-6 flex-1 w-full space-y-6">
+
+        <!-- ================= TAB 1: REKAP ABSENSI OKTOBER 2026 ================= -->
+        <div id="section-rekap" class="space-y-6">
+            <!-- Sync Status Banner Absensi -->
+            <div class="bg-emerald-50 border border-emerald-200 px-4 py-3 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                <div class="flex items-center gap-2.5 text-emerald-900">
+                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <div>
+                        <span class="font-bold">Sumber Data Absensi:</span> 
+                        <span id="absen-sync-source-label" class="text-emerald-700 font-medium">Dataset Bawaan (Lokal)</span>
+                        <span id="absen-sync-last-updated" class="text-emerald-600 ml-2 text-[11px]"></span>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button id="btn-manual-refresh-absen" onclick="syncAbsenFromGoogleSheet(true)" class="hidden px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-arrows-rotate"></i> Tarik Update Absen
+                    </button>
+                    <button onclick="openSyncModal('absen')" class="px-3 py-1.5 bg-white hover:bg-emerald-100 text-emerald-700 font-semibold rounded-lg border border-emerald-200 transition">
+                        Atur Sheet Absensi
+                    </button>
+                </div>
+            </div>
+
+            <!-- KPI Summary Cards -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-medium text-slate-500 uppercase tracking-wider">Total Dokter Aktif</p>
+                        <h3 class="text-2xl font-bold text-slate-900 mt-1" id="stat-total-doctors">0</h3>
+                        <p class="text-xs text-emerald-600 font-medium mt-1"><i class="fa-solid fa-user-check mr-1"></i>Dokter Terdaftar</p>
+                    </div>
+                    <div class="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center text-xl">
+                        <i class="fa-solid fa-user-doctor"></i>
+                    </div>
+                </div>
+
+                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-medium text-slate-500 uppercase tracking-wider">Total Kehadiran Shift</p>
+                        <h3 class="text-2xl font-bold text-slate-900 mt-1" id="stat-total-shifts">0</h3>
+                        <p class="text-xs text-slate-500 mt-1">Akumulasi Sesi Jaga</p>
+                    </div>
+                    <div class="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center text-xl">
+                        <i class="fa-solid fa-calendar-check"></i>
+                    </div>
+                </div>
+
+                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-medium text-slate-500 uppercase tracking-wider">Keterlambatan (>10m)</p>
+                        <h3 class="text-2xl font-bold text-amber-600 mt-1" id="stat-total-late">0</h3>
+                        <p class="text-xs text-slate-500 mt-1">Insiden Keterlambatan</p>
+                    </div>
+                    <div class="w-12 h-12 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center text-xl">
+                        <i class="fa-solid fa-clock"></i>
+                    </div>
+                </div>
+
+                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-medium text-slate-500 uppercase tracking-wider">Pulang Lebih Awal</p>
+                        <h3 class="text-2xl font-bold text-purple-600 mt-1" id="stat-total-early">0</h3>
+                        <p class="text-xs text-slate-500 mt-1">Estafet / Izin Khusus</p>
+                    </div>
+                    <div class="w-12 h-12 bg-purple-50 text-purple-600 rounded-xl flex items-center justify-center text-xl">
+                        <i class="fa-solid fa-person-walking-arrow-right"></i>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Filter Controls Absensi -->
+            <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+                <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                    <div>
+                        <h2 class="font-semibold text-slate-900 flex items-center gap-2">
+                            <i class="fa-solid fa-filter text-indigo-600"></i> Filter Rekap Absensi
+                        </h2>
+                        <p class="text-xs text-slate-500">Pilih bulan & tahun periode, lalu saring berdasarkan klinik atau tanggal</p>
+                    </div>
+                    <!-- Period Selector & Search Input -->
+                    <div class="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                        <div class="flex items-center gap-1.5 bg-indigo-50 border border-indigo-200 px-2.5 py-1.5 rounded-lg">
+                            <i class="fa-regular fa-calendar text-indigo-600 text-xs"></i>
+                            <select id="filter-month" onchange="changePeriod()" class="text-xs font-bold text-indigo-900 bg-transparent outline-none cursor-pointer">
+                                <option value="1">Januari</option>
+                                <option value="2">Februari</option>
+                                <option value="3">Maret</option>
+                                <option value="4">April</option>
+                                <option value="5">Mei</option>
+                                <option value="6">Juni</option>
+                                <option value="7">Juli</option>
+                                <option value="8">Agustus</option>
+                                <option value="9">September</option>
+                                <option value="10" selected>Oktober</option>
+                                <option value="11">November</option>
+                                <option value="12">Desember</option>
+                            </select>
+                            <select id="filter-year" onchange="changePeriod()" class="text-xs font-bold text-indigo-900 bg-transparent outline-none cursor-pointer border-l border-indigo-200 pl-1.5">
+                                <option value="2026" selected>2026</option>
+                                <option value="2027">2027</option>
+                                <option value="2028">2028</option>
+                                <option value="2029">2029</option>
+                                <option value="2030">2030</option>
+                            </select>
+                        </div>
+
+                        <div class="relative flex-1 md:w-64">
+                            <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                            <input type="text" id="search-input" placeholder="Cari nama dokter..." oninput="renderApp()"
+                                   class="w-full pl-9 pr-4 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Clinic Chip Selection -->
+                <div class="space-y-1.5">
+                    <label class="text-xs font-semibold text-slate-600 uppercase tracking-wider">Penempatan Klinik:</label>
+                    <div class="flex flex-wrap gap-2" id="clinic-chips"></div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">Tanggal Praktik:</label>
+                        <select id="filter-date" onchange="renderApp()" class="w-full text-xs border border-slate-300 rounded-lg p-2 focus:ring-indigo-500 focus:border-indigo-500 bg-slate-50">
+                            <option value="ALL">Semua Tanggal (1 - 31 Okt)</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">Poli / Jenis Dokter:</label>
+                        <select id="filter-position" onchange="renderApp()" class="w-full text-xs border border-slate-300 rounded-lg p-2 focus:ring-indigo-500 focus:border-indigo-500 bg-slate-50">
+                            <option value="ALL">Semua Poli (Umum & Gigi)</option>
+                            <option value="Dokter Umum">Dokter Umum (24 Jam)</option>
+                            <option value="Dokter Gigi">Dokter Gigi (Shift 1 & 2)</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">Status Kepegawaian:</label>
+                        <select id="filter-status" onchange="renderApp()" class="w-full text-xs border border-slate-300 rounded-lg p-2 focus:ring-indigo-500 focus:border-indigo-500 bg-slate-50">
+                            <option value="ALL">Semua Status (Tetap & Pengganti)</option>
+                            <option value="Tetap">Dokter Tetap</option>
+                            <option value="Pengganti">Dokter Pengganti</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">Status Kedisiplinan Absen:</label>
+                        <select id="filter-discipline" onchange="renderApp()" class="w-full text-xs border border-slate-300 rounded-lg p-2 focus:ring-indigo-500 focus:border-indigo-500 bg-slate-50">
+                            <option value="ALL">Semua Kondisi</option>
+                            <option value="LATE">Terlambat (>10 Menit)</option>
+                            <option value="EARLY">Pulang Lebih Awal</option>
+                            <option value="NOTES">Memiliki Catatan / Alasan</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Data Table Card -->
+            <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                <div class="px-6 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <h3 class="font-bold text-slate-900 text-sm flex items-center gap-2">
+                        <i class="fa-solid fa-table-list text-indigo-600"></i> Daftar Absensi Dokter (<span id="table-period-title">Oktober 2026</span>)
+                    </h3>
+                    <div class="flex items-center gap-3">
+                        <span class="text-xs text-slate-500" id="table-row-count">Menampilkan 0 dokter</span>
+                        <button onclick="openAddAttendanceModal()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1.5 shadow-sm">
+                            <i class="fa-solid fa-plus"></i> Input Absensi Baru
+                        </button>
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto custom-scrollbar">
+                    <table class="w-full text-left text-xs border-collapse">
+                        <thead>
+                            <tr class="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200 uppercase tracking-wider">
+                                <th class="py-3.5 px-4 w-12 text-center">No</th>
+                                <th class="py-3.5 px-4">Nama Dokter</th>
+                                <th class="py-3.5 px-4">Poli / Jenis</th>
+                                <th class="py-3.5 px-4">Status</th>
+                                <th class="py-3.5 px-4">Klinik</th>
+                                <th class="py-3.5 px-4 text-center">Total Shift</th>
+                                <th class="py-3.5 px-4 text-center">Terlambat (>10m)</th>
+                                <th class="py-3.5 px-4 text-center">Pulang Cepat</th>
+                                <th class="py-3.5 px-4">Catatan Operasional</th>
+                                <th class="py-3.5 px-4 text-center">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="doctor-table-body" class="divide-y divide-slate-100"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= TAB 2: JADWAL TETAP PRAKTIK DOKTER ================= -->
+        <div id="section-jadwal" class="space-y-6 hidden">
+            <!-- Sync Status Banner -->
+            <div id="sync-status-bar" class="bg-indigo-50 border border-indigo-200 px-4 py-3 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                <div class="flex items-center gap-2.5 text-indigo-900">
+                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <div>
+                        <span class="font-bold">Sumber Data Jadwal:</span> 
+                        <span id="sync-source-label" class="text-indigo-700 font-medium">Dataset Bawaan (Lokal)</span>
+                        <span id="sync-last-updated" class="text-indigo-500 ml-2 text-[11px]"></span>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button id="btn-manual-refresh" onclick="syncFromGoogleSheet(true)" class="hidden px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-arrows-rotate"></i> Tarik Update Jadwal
+                    </button>
+                    <button onclick="openSyncModal('jadwal')" class="px-3 py-1.5 bg-white hover:bg-indigo-100 text-indigo-700 font-semibold rounded-lg border border-indigo-200 transition">
+                        Atur Sheet Jadwal
+                    </button>
+                </div>
+            </div>
+
+            <!-- Filter Controls Jadwal Tetap -->
+            <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+                <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                    <div>
+                        <h2 class="font-semibold text-slate-900 flex items-center gap-2">
+                            <i class="fa-solid fa-calendar-check text-indigo-600"></i> Filter Jadwal Tetap Praktik
+                        </h2>
+                        <p class="text-xs text-slate-500">Pilih unit klinik khusus untuk melihat jadwal resmi dokter Senin s/d Minggu</p>
+                    </div>
+                    <!-- Search Input Jadwal -->
+                    <div class="relative w-full md:w-72">
+                        <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                        <input type="text" id="search-schedule-input" placeholder="Cari nama dokter / spesialis..." oninput="renderFixedSchedules()"
+                               class="w-full pl-9 pr-4 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+                    </div>
+                </div>
+
+                <!-- Clinic Chip Selection for Schedule -->
+                <div class="space-y-1.5">
+                    <label class="text-xs font-semibold text-slate-600 uppercase tracking-wider">Unit Klinik:</label>
+                    <div class="flex flex-wrap gap-2" id="schedule-clinic-chips"></div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">Spesialisasi / Poli:</label>
+                        <select id="schedule-filter-position" onchange="renderFixedSchedules()" class="w-full text-xs border border-slate-300 rounded-lg p-2 focus:ring-indigo-500 focus:border-indigo-500 bg-slate-50">
+                            <option value="ALL">Semua Poli & Spesialis</option>
+                            <option value="Umum">Dokter Umum</option>
+                            <option value="Gigi">Dokter Gigi</option>
+                            <option value="Sp.">Dokter Spesialis (Sp.)</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">Sorot Hari Praktik:</label>
+                        <select id="schedule-filter-day" onchange="renderFixedSchedules()" class="w-full text-xs border border-slate-300 rounded-lg p-2 focus:ring-indigo-500 focus:border-indigo-500 bg-slate-50">
+                            <option value="ALL">Semua Hari (Senin - Minggu)</option>
+                            <option value="senin">Senin</option>
+                            <option value="selasa">Selasa</option>
+                            <option value="rabu">Rabu</option>
+                            <option value="kamis">Kamis</option>
+                            <option value="jumat">Jumat</option>
+                            <option value="sabtu">Sabtu</option>
+                            <option value="minggu">Minggu</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Schedule Cards Container -->
+            <div id="schedule-cards-container" class="space-y-6"></div>
+        </div>
+    </main>
+
+    <!-- Modal Detail Absensi Dokter -->
+    <div id="detail-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[90vh] flex flex-col">
+            <div class="flex items-start justify-between border-b border-slate-100 pb-3">
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h3 class="font-bold text-slate-900 text-base" id="modal-doc-name">Nama Dokter</h3>
+                        <span id="modal-clinic-badge" class="px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded text-[11px] font-bold">Klinik</span>
+                    </div>
+                    <p class="text-xs text-slate-500 mt-0.5" id="modal-doc-sub">Poli • Status</p>
+                </div>
+                <button onclick="closeDetailModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+
+            <div class="grid grid-cols-3 gap-3 text-xs">
+                <div class="bg-emerald-50 border border-emerald-100 p-3 rounded-xl">
+                    <span class="text-emerald-700 font-medium block">Kehadiran (<span id="modal-period-label">Oktober</span>)</span>
+                    <span class="text-base font-bold text-emerald-900 mt-0.5 block" id="modal-shift-count">0 Shift</span>
+                </div>
+                <div class="bg-amber-50 border border-amber-100 p-3 rounded-xl">
+                    <span class="text-amber-700 font-medium block">Terlambat (>10m)</span>
+                    <span class="text-base font-bold text-amber-900 mt-0.5 block" id="modal-late-count">0 Shift</span>
+                </div>
+                <div class="bg-purple-50 border border-purple-100 p-3 rounded-xl">
+                    <span class="text-purple-700 font-medium block">Pulang Cepat</span>
+                    <span class="text-base font-bold text-purple-900 mt-0.5 block" id="modal-early-count">0 Shift</span>
+                </div>
+            </div>
+
+            <div class="bg-slate-50 border border-slate-200 p-3 rounded-xl text-xs">
+                <span class="font-bold text-slate-700">Catatan Operasional:</span>
+                <p id="modal-general-note" class="text-slate-600 mt-0.5">-</p>
+            </div>
+
+            <div class="flex items-center justify-between pt-1">
+                <h4 class="font-bold text-slate-800 text-xs">Riwayat Shift & Jam Absensi (<span id="modal-history-period">Oktober 2026</span>)</h4>
+                <div class="flex items-center gap-2">
+                    <button id="modal-edit-doctor-btn" class="px-2.5 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-800 font-semibold rounded-lg text-xs transition">
+                        <i class="fa-solid fa-user-pen mr-1"></i> Edit Profil
+                    </button>
+                    <button id="modal-add-shift-btn" class="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg text-xs transition">
+                        <i class="fa-solid fa-plus mr-1"></i> Tambah Shift
+                    </button>
+                </div>
+            </div>
+
+            <div class="overflow-y-auto custom-scrollbar flex-1 border border-slate-200 rounded-xl">
+                <table class="w-full text-left text-xs border-collapse">
+                    <thead class="bg-slate-100 text-slate-600 font-semibold sticky top-0">
+                        <tr>
+                            <th class="py-2.5 px-3">Tanggal</th>
+                            <th class="py-2.5 px-3 text-center">Datang</th>
+                            <th class="py-2.5 px-3 text-center">Pulang</th>
+                            <th class="py-2.5 px-3">Status Kedisiplinan</th>
+                            <th class="py-2.5 px-3 text-center">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="modal-attendance-rows" class="divide-y divide-slate-100"></tbody>
+                </table>
+            </div>
+
+            <div class="pt-2 flex justify-end border-t border-slate-100">
+                <button onclick="closeDetailModal()" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold rounded-lg">Tutup</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Sync Spreadsheet (Terpisah: Rekap Absensi & Jadwal Tetap) -->
+    <div id="sync-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[92vh] overflow-y-auto custom-scrollbar">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 class="font-bold text-slate-900 text-sm flex items-center gap-2">
+                    <i class="fa-solid fa-table text-emerald-600"></i> Sinkronisasi Spreadsheet (2 File Terpisah)
+                </h3>
+                <button onclick="closeSyncModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-base"></i></button>
+            </div>
+
+            <!-- Sub-Tab Switcher dalam Modal Sync -->
+            <div class="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-xl">
+                <button type="button" id="sync-subtab-absen" onclick="switchSyncSubtab('absen')" 
+                        class="py-2 px-3 rounded-lg text-xs font-bold transition bg-white text-emerald-800 shadow-sm flex items-center justify-center gap-1.5">
+                    <i class="fa-solid fa-clipboard-user"></i> 1. File Rekap Absensi
+                </button>
+                <button type="button" id="sync-subtab-jadwal" onclick="switchSyncSubtab('jadwal')" 
+                        class="py-2 px-3 rounded-lg text-xs font-bold transition text-slate-600 hover:text-slate-900 flex items-center justify-center gap-1.5">
+                    <i class="fa-solid fa-calendar-days"></i> 2. File Jadwal Tetap
+                </button>
+            </div>
+
+            <!-- PANEL A: SINKRONISASI FILE REKAP ABSENSI DOKTER -->
+            <div id="sync-panel-absen" class="space-y-4 text-xs">
+                <div class="bg-emerald-50/70 border border-emerald-200 p-4 rounded-xl space-y-3">
+                    <div class="flex items-center justify-between">
+                        <h4 class="font-bold text-emerald-900 flex items-center gap-1.5">
+                            <i class="fa-brands fa-google-drive text-emerald-600"></i> Google Sheets Rekap Absensi
+                        </h4>
+                        <span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded font-bold text-[10px]">Target: <span id="sync-absen-target-period">Oktober 2026</span></span>
+                    </div>
+                    <p class="text-emerald-800 leading-relaxed">
+                        Tempel link Google Sheets khusus file <b>Rekap Absen Dokter</b>. Data yang ditarik akan memperbarui periode bulan & tahun yang sedang dipilih saat ini.
+                    </p>
+                    <div class="space-y-2">
+                        <input type="url" id="gsheet-absen-url" placeholder="Tempel link Google Sheets Rekap Absensi (Share atau CSV)..." 
+                               class="w-full border border-emerald-300 rounded-lg p-2.5 bg-white focus:ring-2 focus:ring-emerald-500 outline-none">
+                        <div class="flex items-center justify-between pt-1">
+                            <label class="flex items-center gap-2 text-emerald-900 font-medium cursor-pointer">
+                                <input type="checkbox" id="gsheet-absen-autopoll" checked class="rounded text-emerald-600 focus:ring-emerald-500">
+                                Auto-cek update tiap 60 detik
+                            </label>
+                            <button type="button" onclick="connectAbsenGoogleSheet()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg shadow-sm transition flex items-center gap-1.5">
+                                <i class="fa-solid fa-link"></i> Hubungkan Absen
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-50 border border-slate-200 p-4 rounded-xl space-y-2.5">
+                    <h4 class="font-bold text-slate-800 flex items-center gap-1.5">
+                        <i class="fa-solid fa-file-excel text-emerald-600"></i> Unggah File Excel (.xlsx) / CSV Absensi Lokal
+                    </h4>
+                    <p class="text-slate-600 text-[11px]">
+                        Mendukung format matriks harian (Kolom Nama, Poli, Status, Klinik, Keterangan, serta tanggal 1 s/d 31 Datang & Pulang).
+                    </p>
+                    <input type="file" id="excel-absen-input" accept=".xlsx, .xls, .csv" onchange="handleLocalAbsenExcelUpload(event)"
+                           class="block w-full text-xs text-slate-600 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 cursor-pointer">
+                </div>
+
+                <div class="flex justify-between items-center pt-1">
+                    <button type="button" onclick="disconnectAbsenGoogleSheet()" class="text-xs text-rose-600 hover:text-rose-700 font-semibold">
+                        Putuskan Link Sheet Absen
+                    </button>
+                    <button type="button" onclick="closeSyncModal()" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold rounded-lg">
+                        Tutup
+                    </button>
+                </div>
+            </div>
+
+            <!-- PANEL B: SINKRONISASI FILE JADWAL TETAP PRAKTIK -->
+            <div id="sync-panel-jadwal" class="space-y-4 text-xs hidden">
+                <div class="bg-indigo-50/70 border border-indigo-200 p-4 rounded-xl space-y-3">
+                    <div class="flex items-center justify-between">
+                        <h4 class="font-bold text-indigo-900 flex items-center gap-1.5">
+                            <i class="fa-brands fa-google-drive text-indigo-600"></i> Google Sheets Jadwal Tetap Praktik
+                        </h4>
+                        <span class="px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded font-bold text-[10px]">Real-Time</span>
+                    </div>
+                    <p class="text-indigo-800 leading-relaxed">
+                        Tempel link Google Sheets khusus file <b>Jadwal Praktik Dokter Umum & Gigi</b> (struktur Klinik, Poli, Jam, Senin–Minggu).
+                    </p>
+                    <div class="space-y-2">
+                        <input type="url" id="gsheet-csv-url" placeholder="Tempel link Google Sheets Jadwal Tetap (Share atau CSV)..." 
+                               class="w-full border border-indigo-300 rounded-lg p-2.5 bg-white focus:ring-2 focus:ring-indigo-500 outline-none">
+                        <div class="flex items-center justify-between pt-1">
+                            <label class="flex items-center gap-2 text-indigo-900 font-medium cursor-pointer">
+                                <input type="checkbox" id="gsheet-auto-poll" checked class="rounded text-indigo-600 focus:ring-indigo-500">
+                                Auto-cek update tiap 60 detik
+                            </label>
+                            <button type="button" onclick="connectGoogleSheet()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-sm transition flex items-center gap-1.5">
+                                <i class="fa-solid fa-link"></i> Hubungkan Jadwal
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-50 border border-slate-200 p-4 rounded-xl space-y-2.5">
+                    <h4 class="font-bold text-slate-800 flex items-center gap-1.5">
+                        <i class="fa-solid fa-file-excel text-indigo-600"></i> Unggah File Excel (.xlsx) / CSV Jadwal Lokal
+                    </h4>
+                    <p class="text-slate-600 text-[11px]">
+                        Jika Anda mengedit file Excel jadwal di komputer, unggah file terbaru di sini untuk langsung memperbarui tabel jadwal.
+                    </p>
+                    <input type="file" id="excel-file-input" accept=".xlsx, .xls, .csv" onchange="handleLocalExcelUpload(event)"
+                           class="block w-full text-xs text-slate-600 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer">
+                </div>
+
+                <div class="flex justify-between items-center pt-1">
+                    <button type="button" onclick="disconnectGoogleSheet()" class="text-xs text-rose-600 hover:text-rose-700 font-semibold">
+                        Putuskan Link Sheet Jadwal
+                    </button>
+                    <button type="button" onclick="closeSyncModal()" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold rounded-lg">
+                        Tutup
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Form Edit Profile Dokter -->
+    <div id="edit-doctor-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 class="font-bold text-slate-900 text-sm flex items-center gap-2">
+                    <i class="fa-solid fa-user-pen text-amber-600"></i> Edit Informasi Profile Dokter
+                </h3>
+                <button onclick="closeEditDoctorModal()" class="text-slate-400 hover:text-slate-600 text-xs"><i class="fa-solid fa-xmark text-base"></i></button>
+            </div>
+
+            <form id="edit-doctor-form" onsubmit="saveDoctorProfile(event)" class="space-y-3 text-xs">
+                <input type="hidden" id="edit-profile-doc-id">
+
+                <div>
+                    <label class="block text-slate-600 font-medium mb-1">Nama Dokter (Lengkap & EYD):</label>
+                    <input type="text" id="edit-profile-name" required class="w-full border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none">
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-slate-600 font-medium mb-1">Poli / Jenis Dokter:</label>
+                        <select id="edit-profile-position" class="w-full border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
+                            <option value="Dokter Umum">Dokter Umum</option>
+                            <option value="Dokter Gigi">Dokter Gigi</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-slate-600 font-medium mb-1">Status Kepegawaian:</label>
+                        <select id="edit-profile-status" class="w-full border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
+                            <option value="Tetap">Tetap</option>
+                            <option value="Pengganti">Pengganti</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-slate-600 font-medium mb-1">Penempatan Unit Klinik:</label>
+                    <select id="edit-profile-clinic" class="w-full border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
+                        <option value="CKG">CKG (Mitra Cakung)</option>
+                        <option value="CTM">CTM (Citra Medika)</option>
+                        <option value="MGM24">MGM24 (MGM 24)</option>
+                        <option value="MJ">MJ (Mitra Jatinegara)</option>
+                        <option value="MM">MM (Mitra Medika)</option>
+                        <option value="PM">PM (Prima Medika)</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-slate-600 font-medium mb-1">Catatan Umum / Keterangan Operasional:</label>
+                    <textarea id="edit-profile-ket" rows="2" placeholder="Catatan khusus atau alasan jaga..." class="w-full border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none"></textarea>
+                </div>
+
+                <div class="pt-2 flex justify-end space-x-2 border-t border-slate-100">
+                    <button type="button" onclick="closeEditDoctorModal()" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold rounded-lg">Batal</button>
+                    <button type="submit" class="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded-lg shadow-sm">Simpan Dokter</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Form Edit Attendance Entry -->
+    <div id="edit-entry-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 class="font-bold text-slate-900 text-sm flex items-center gap-2">
+                    <i class="fa-solid fa-pen-to-square text-indigo-600"></i> Edit Jam Absen Dokter
+                </h3>
+                <button onclick="closeEditEntryModal()" class="text-slate-400 hover:text-slate-600 text-xs"><i class="fa-solid fa-xmark text-base"></i></button>
+            </div>
+
+            <form id="edit-entry-form" onsubmit="saveAttendanceEntry(event)" class="space-y-3 text-xs">
+                <input type="hidden" id="edit-doc-id">
+                <input type="hidden" id="edit-day">
+
+                <div>
+                    <label class="block text-slate-600 font-medium mb-1">Nama Dokter & Tanggal:</label>
+                    <input type="text" id="edit-doc-info" readonly class="w-full bg-slate-100 border border-slate-200 rounded-lg p-2 font-semibold text-slate-700">
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-slate-600 font-medium mb-1">Jam Datang:</label>
+                        <input type="text" id="edit-datang" placeholder="cth: 08.55" class="w-full border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-slate-600 font-medium mb-1">Jam Pulang:</label>
+                        <input type="text" id="edit-pulang" placeholder="cth: 09.00" class="w-full border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none">
+                    </div>
+                </div>
+
+                <div class="bg-indigo-50 border border-indigo-100 p-3 rounded-lg flex items-start space-x-2.5">
+                    <input type="checkbox" id="edit-is-puskesmas" class="mt-0.5 text-indigo-600 rounded focus:ring-indigo-500">
+                    <div>
+                        <label for="edit-is-puskesmas" class="font-bold text-indigo-900 cursor-pointer block">Dokter Gigi Praktik Puskesmas (+30 Menit)</label>
+                        <p class="text-[11px] text-indigo-700 mt-0.5">Jam masuk shift sore disesuaikan menjadi 16.30 (tidak dihitung terlambat jika hadir jam 16.30).</p>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-slate-600 font-medium mb-1">Catatan Keterangan / Alasan Tambahan:</label>
+                    <textarea id="edit-ket" rows="2" placeholder="Masukkan alasan atau catatan khusus..." class="w-full border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none"></textarea>
+                </div>
+
+                <div class="pt-2 flex justify-end space-x-2 border-t border-slate-100">
+                    <button type="button" onclick="closeEditEntryModal()" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold rounded-lg">Batal</button>
+                    <button type="submit" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-sm">Simpan Jam Absen</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Form Tambah Absensi Baru (Untuk Bulan/Tahun Berikutnya) -->
+    <div id="add-attendance-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 class="font-bold text-slate-900 text-sm flex items-center gap-2">
+                    <i class="fa-solid fa-calendar-plus text-indigo-600"></i> Input Absensi (<span id="add-modal-period-label">Oktober 2026</span>)
+                </h3>
+                <button onclick="closeAddAttendanceModal()" class="text-slate-400 hover:text-slate-600 text-xs"><i class="fa-solid fa-xmark text-base"></i></button>
+            </div>
+
+            <form id="add-attendance-form" onsubmit="saveNewAttendance(event)" class="space-y-3 text-xs">
+                <div>
+                    <label class="block text-slate-600 font-medium mb-1">Pilih Dokter:</label>
+                    <select id="add-att-doc-id" required class="w-full border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none bg-white"></select>
+                </div>
+
+                <div>
+                    <label class="block text-slate-600 font-medium mb-1">Tanggal Praktik:</label>
+                    <select id="add-att-day" required class="w-full border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none bg-white"></select>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-slate-600 font-medium mb-1">Jam Datang:</label>
+                        <input type="text" id="add-att-datang" value="09.00" required class="w-full border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-slate-600 font-medium mb-1">Jam Pulang:</label>
+                        <input type="text" id="add-att-pulang" value="09.00" required class="w-full border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 outline-none">
+                    </div>
+                </div>
+
+                <div class="bg-indigo-50 border border-indigo-100 p-3 rounded-lg flex items-start space-x-2.5">
+                    <input type="checkbox" id="add-att-puskesmas" class="mt-0.5 text-indigo-600 rounded focus:ring-indigo-500">
+                    <div>
+                        <label for="add-att-puskesmas" class="font-bold text-indigo-900 cursor-pointer block">Dokter Gigi Praktik Puskesmas (+30 Menit)</label>
+                        <p class="text-[11px] text-indigo-700 mt-0.5">Jam masuk shift sore disesuaikan menjadi 16.30.</p>
+                    </div>
+                </div>
+
+                <div class="pt-2 flex justify-end space-x-2 border-t border-slate-100">
+                    <button type="button" onclick="closeAddAttendanceModal()" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold rounded-lg">Batal</button>
+                    <button type="submit" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-sm">Simpan Shift</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Custom Confirmation Modal for Reset -->
+    <div id="reset-confirm-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div class="flex items-center gap-3 text-amber-600">
+                <div class="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-lg">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                </div>
+                <h3 class="font-bold text-slate-900 text-sm">Reset Seluruh Data?</h3>
+            </div>
+            <p class="text-xs text-slate-600 leading-relaxed">
+                Apakah Anda yakin ingin mengembalikan seluruh data absensi, profil dokter, dan jadwal ke versi bawaan awal?
+            </p>
+            <div class="flex justify-end gap-2 pt-2">
+                <button onclick="closeResetModal()" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold rounded-lg">Batal</button>
+                <button onclick="confirmResetData()" class="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-lg shadow-sm">Ya, Reset Data</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Application Script Logic & Datasets -->
+    <script>
+        // Data Mentah Absensi Bulan Oktober 2026
+        const rawDoctorDataset = [
+  {"id": 1, "name": "dr. Berlian Maurise Hendrawati", "position": "Dokter Umum", "status": "Tetap", "clinic": "CKG", "ket": "LANJUT JAGA DI MITRA CAKUNG", "attendance": [{"day": 6, "datang": "08,50", "pulang": "lanjut"}, {"day": 7, "datang": "lanjut", "pulang": "09.00"}, {"day": 12, "datang": "08.55", "pulang": "lanjut"}, {"day": 13, "datang": "lanjut", "pulang": "09.00"}, {"day": 19, "datang": "08.50", "pulang": "09.00"}, {"day": 26, "datang": "08.50", "pulang": "08.20"}]},
+  {"id": 2, "name": "dr. Cindy Tanya", "position": "Dokter Umum", "status": "Pengganti", "clinic": "CKG", "ket": "", "attendance": [{"day": 16, "datang": "08.59", "pulang": "07.00"}]},
+  {"id": 3, "name": "dr. Melvin Balo", "position": "Dokter Umum", "status": "Tetap", "clinic": "CKG", "ket": "lnjut di cakung", "attendance": [{"day": 3, "datang": "08,55", "pulang": "07,00"}, {"day": 23, "datang": "09.02", "pulang": "lanjut"}, {"day": 24, "datang": "lanjut", "pulang": "07.00"}, {"day": 31, "datang": "09.05", "pulang": "'09.00"}]},
+  {"id": 4, "name": "dr. Rika Erna", "position": "Dokter Umum", "status": "Tetap", "clinic": "CKG", "ket": "", "attendance": [{"day": 1, "datang": "09,00", "pulang": "09,00"}, {"day": 7, "datang": "09.00", "pulang": "09.00"}, {"day": 12, "datang": "09.00", "pulang": "09.00"}, {"day": 14, "datang": "09.00", "pulang": "09.00"}, {"day": 17, "datang": "08.55", "pulang": "09.02"}, {"day": 21, "datang": "08.25", "pulang": "09.00"}, {"day": 26, "datang": "09.00", "pulang": "09.00"}, {"day": 29, "datang": "08.00", "pulang": "09.00"}]},
+  {"id": 5, "name": "dr. Muhammad Rizal", "position": "Dokter Umum", "status": "Tetap", "clinic": "CKG", "ket": "", "attendance": [{"day": 4, "datang": "07,00", "pulang": "09,00"}, {"day": 10, "datang": "06.55", "pulang": "lanjut"}, {"day": 11, "datang": "lanjut", "pulang": "09.00"}, {"day": 15, "datang": "07.00", "pulang": "LANJUT JAGA"}, {"day": 16, "datang": "LANJUT JAGA", "pulang": "9,00"}, {"day": 21, "datang": "08.55", "pulang": "08.00"}, {"day": 26, "datang": "07.00", "pulang": "09.00"}, {"day": 28, "datang": "08.00", "pulang": "08.00"}]},
+  {"id": 6, "name": "dr. Meysi", "position": "Dokter Umum", "status": "Pengganti", "clinic": "CKG", "ket": "", "attendance": [{"day": 2, "datang": "08,40", "pulang": "09,00"}, {"day": 8, "datang": "08.48", "pulang": "08.00"}, {"day": 30, "datang": "08.30", "pulang": "09.00"}]},
+  {"id": 7, "name": "dr. Nadia", "position": "Dokter Umum", "status": "Pengganti", "clinic": "CKG", "ket": "", "attendance": [{"day": 5, "datang": "09,00", "pulang": "09,05"}, {"day": 8, "datang": "09.00", "pulang": "1300"}]},
+  {"id": 8, "name": "drg. Astu", "position": "Dokter Gigi", "status": "Pengganti", "clinic": "CKG", "ket": "", "attendance": [{"day": 1, "datang": "10,02", "pulang": "14,15"}, {"day": 7, "datang": "10.02", "pulang": "14.05"}, {"day": 8, "datang": "1700", "pulang": "2100"}, {"day": 16, "datang": "16.02", "pulang": "20.00"}, {"day": 18, "datang": "10.00", "pulang": "15.02"}, {"day": 22, "datang": "9.25", "pulang": "1400"}, {"day": 23, "datang": "16.02", "pulang": "20.09"}, {"day": 29, "datang": "9.55", "pulang": "14.02"}, {"day": 30, "datang": "15.57", "pulang": "20.05"}]},
+  {"id": 9, "name": "drg. Christopher Ryan Aliwarga", "position": "Dokter Gigi", "status": "Tetap", "clinic": "CKG", "ket": "", "attendance": [{"day": 1, "datang": "16,09", "pulang": "20,00"}, {"day": 2, "datang": "15,38", "pulang": "21,00"}, {"day": 3, "datang": "09,05//15,35", "pulang": "13,00//21,00"}, {"day": 6, "datang": "03,55", "pulang": "09.30"}, {"day": 7, "datang": "16.04", "pulang": "20.05"}, {"day": 9, "datang": "09.05 //16.06", "pulang": "1300 // 2000"}, {"day": 12, "datang": "15.58", "pulang": "20.02"}, {"day": 14, "datang": "09.35//16.00", "pulang": "13.40//20.00"}, {"day": 16, "datang": "09.15//16.02", "pulang": "13.00//20.20"}, {"day": 20, "datang": "16.03", "pulang": "20.10"}, {"day": 22, "datang": "16.05", "pulang": "20.09"}, {"day": 24, "datang": "09.06//16.04", "pulang": "13.10//20.05"}, {"day": 28, "datang": "15.56", "pulang": "20.15"}, {"day": 30, "datang": "16.04", "pulang": "20.30"}, {"day": 31, "datang": "09.02//16.03", "pulang": "14.00//20.02"}]},
+  {"id": 10, "name": "drg. Dina Apriliana", "position": "Dokter Gigi", "status": "Tetap", "clinic": "CKG", "ket": "", "attendance": [{"day": 5, "datang": "09,05", "pulang": "13,00"}, {"day": 26, "datang": "9.08", "pulang": "13.00"}]},
+  {"id": 11, "name": "drg. Nadianisa Luthfiani", "position": "Dokter Gigi", "status": "Tetap", "clinic": "CKG", "ket": "", "attendance": [{"day": 2, "datang": "09,05", "pulang": "13,00"}, {"day": 5, "datang": "15,58", "pulang": "22,30"}, {"day": 6, "datang": "15.58", "pulang": "20.50"}, {"day": 12, "datang": "16.02", "pulang": "20'00"}, {"day": 13, "datang": "16.00", "pulang": "20.00"}, {"day": 15, "datang": "09.00", "pulang": "13.00"}, {"day": 18, "datang": "1600", "pulang": "20.00"}, {"day": 21, "datang": "16.05", "pulang": "20"}, {"day": 23, "datang": "09.03", "pulang": "13.04"}, {"day": 26, "datang": "16.02", "pulang": "20.00"}, {"day": 28, "datang": "16.04", "pulang": "20.16"}, {"day": 30, "datang": "09.08", "pulang": "1300"}]},
+  {"id": 12, "name": "drg. Muhammad Haidar Bagir", "position": "Dokter Gigi", "status": "Tetap", "clinic": "CKG", "ket": "", "attendance": [{"day": 6, "datang": "09,07", "pulang": "13,00"}, {"day": 7, "datang": "09.02", "pulang": "13.25"}, {"day": 12, "datang": "09.00", "pulang": "13.00"}, {"day": 13, "datang": "9.04", "pulang": "13.00"}, {"day": 14, "datang": "09.05", "pulang": "13.00"}, {"day": 20, "datang": "09.02", "pulang": "13.00"}, {"day": 21, "datang": "09.03", "pulang": "13.02"}, {"day": 27, "datang": "9.04", "pulang": "13.04"}, {"day": 28, "datang": "09.00", "pulang": "13.00"}]},
+  {"id": 13, "name": "dr. Febrima Rahayu", "position": "Dokter Umum", "status": "Tetap", "clinic": "CTM", "ket": "LANJUT JAGA DI CTM", "attendance": [{"day": 1, "datang": "08.55 AM", "pulang": "09.00 AM"}, {"day": 7, "datang": "09.30 AM", "pulang": "LANJUT"}, {"day": 8, "datang": "LANJUT", "pulang": "07.30 AM"}, {"day": 15, "datang": "08.45 AM", "pulang": "08.30 AM"}, {"day": 22, "datang": "9.30 AM", "pulang": "LANJUT"}, {"day": 23, "datang": "LANJUT", "pulang": "07.30 AM"}, {"day": 29, "datang": "08.50 AM", "pulang": "LANJUT"}, {"day": 30, "datang": "LANJUT", "pulang": "07.30 AM"}]},
+  {"id": 14, "name": "dr. Raynhard Nicolas Salindeho", "position": "Dokter Umum", "status": "Tetap", "clinic": "CTM", "ket": "", "attendance": [{"day": 5, "datang": "08.40 AM", "pulang": "LANJUT"}, {"day": 6, "datang": "LANJUT", "pulang": "LANJUT"}, {"day": 7, "datang": "LANJUT", "pulang": "09.00 AM"}, {"day": 12, "datang": "08.45 AM", "pulang": "LANJUT"}, {"day": 13, "datang": "LANJUT", "pulang": "LANJUT"}, {"day": 14, "datang": "LANJUT", "pulang": "08.50 AM"}, {"day": 19, "datang": "09.00 AM", "pulang": "LANJUT"}, {"day": 20, "datang": "LANJUT", "pulang": "LANJUT"}, {"day": 21, "datang": "LANJUT", "pulang": "9.00 AM"}, {"day": 26, "datang": "08.40 am", "pulang": "lanjut"}, {"day": 27, "datang": "lanjut", "pulang": "lanjut"}, {"day": 28, "datang": "lanjut", "pulang": "09.00 AM"}]},
+  {"id": 15, "name": "dr. Sinsiwa Lamser S.", "position": "Dokter Umum", "status": "Tetap", "clinic": "CTM", "ket": "", "attendance": [{"day": 2, "datang": "09.00 AM", "pulang": "LANJUT"}, {"day": 3, "datang": "LANJUT", "pulang": "LANJUT"}, {"day": 4, "datang": "LANJUT", "pulang": "09.00 AM"}, {"day": 10, "datang": "09.00 AM", "pulang": "LANJUT"}, {"day": 11, "datang": "LANJUT", "pulang": "09.00 AM"}, {"day": 16, "datang": "09.15 AM", "pulang": "LANJUT"}, {"day": 17, "datang": "LANJUT", "pulang": "LANJUT"}, {"day": 18, "datang": "LANJUT", "pulang": "07.30 AM"}, {"day": 24, "datang": "09.38 AM", "pulang": "LANJUT"}, {"day": 25, "datang": "LANJUT", "pulang": "09.00 am"}, {"day": 31, "datang": "09.15 AM", "pulang": "LANJUT"}]},
+  {"id": 16, "name": "drg. Abigail Marisca Christy", "position": "Dokter Gigi", "status": "Tetap", "clinic": "CTM", "ket": "", "attendance": [{"day": 2, "datang": "09.00 AM", "pulang": "20.00 PM"}, {"day": 3, "datang": "15.00 AM", "pulang": "20.00 PM"}, {"day": 6, "datang": "09.00 AM", "pulang": "13.00 AM"}, {"day": 7, "datang": "09.00 AM", "pulang": "13.00 AM"}, {"day": 8, "datang": "09.50 AM", "pulang": "13.00 PM"}, {"day": 13, "datang": "09:10:00", "pulang": "13:00:00"}, {"day": 14, "datang": "9.30 AM", "pulang": "13:00:00"}, {"day": 16, "datang": "09:15:00", "pulang": "20:00:00"}, {"day": 17, "datang": "16:00:00", "pulang": "20:00:00"}, {"day": 20, "datang": "09:10:00", "pulang": "13:00:00"}, {"day": 21, "datang": "9.30 AM", "pulang": "13.00 AM"}, {"day": 23, "datang": "09:15:00", "pulang": "20:00:00"}, {"day": 27, "datang": "09:50:00", "pulang": "13:00:00"}, {"day": 28, "datang": "09:55:00", "pulang": "13:00:00"}, {"day": 30, "datang": "09:15:00", "pulang": "20:30:00"}, {"day": 31, "datang": "16:00:00", "pulang": "20:00:00"}]},
+  {"id": 17, "name": "drg. Ruvi Putri Danian", "position": "Dokter Gigi", "status": "Tetap", "clinic": "CTM", "ket": "", "attendance": [{"day": 6, "datang": "15.40 AM", "pulang": "20.00 PM"}, {"day": 12, "datang": "15:30:00", "pulang": "20:00:00"}, {"day": 13, "datang": "16:00:00", "pulang": "20:00:00"}, {"day": 14, "datang": "04:00:00", "pulang": "20:00:00"}]},
+  {"id": 18, "name": "drg. Farhan Jordan Akbar", "position": "Dokter Gigi", "status": "Tetap", "clinic": "CTM", "ket": "", "attendance": [{"day": 1, "datang": "09.30 AM", "pulang": "13.00 AM"}, {"day": 5, "datang": "10.30 AM", "pulang": "13.00 AM"}, {"day": 8, "datang": "10.00 AM", "pulang": "13:00:00"}, {"day": 15, "datang": "10.30 AM", "pulang": "13.00 AM"}, {"day": 19, "datang": "10:00:00", "pulang": "13:00:00"}, {"day": 26, "datang": "09:30:00", "pulang": "13:00:00"}]},
+  {"id": 19, "name": "drg. Anisa Aulia Rahmah", "position": "Dokter Gigi", "status": "Tetap", "clinic": "CTM", "ket": "", "attendance": [{"day": 1, "datang": "16.00 AM", "pulang": "20.00 PM"}, {"day": 3, "datang": "09:00:00", "pulang": "13:00:00"}, {"day": 8, "datang": "16.00 AM", "pulang": "20.00 PM"}, {"day": 10, "datang": "09:00:00", "pulang": "13:00:00"}, {"day": 15, "datang": "16.00 PM", "pulang": "20.00 PM"}, {"day": 17, "datang": "09:10:00", "pulang": "13:00:00"}, {"day": 22, "datang": "16:10:00", "pulang": "20:00:00"}, {"day": 24, "datang": "09:00:00", "pulang": "13:00:00"}, {"day": 29, "datang": "16.10 AM", "pulang": "20:00:00"}, {"day": 31, "datang": "09:00:00", "pulang": "13:00:00"}]},
+  {"id": 20, "name": "drg. Vionica", "position": "Dokter Gigi", "status": "Tetap", "clinic": "CTM", "ket": "", "attendance": [{"day": 27, "datang": "09:00:00", "pulang": "13:00:00"}, {"day": 29, "datang": "09:15:00", "pulang": "13:00:00"}]},
+  {"id": 21, "name": "drg. Khadijah", "position": "Dokter Gigi", "status": "Tetap", "clinic": "CTM", "ket": "", "attendance": [{"day": 5, "datang": "09.00 AM", "pulang": "13.00 AM"}, {"day": 10, "datang": "16.00 PM", "pulang": "20.00 PM"}, {"day": 12, "datang": "09.00 AM", "pulang": "13.00 AM"}, {"day": 19, "datang": "16:05:00", "pulang": "20:00:00"}, {"day": 20, "datang": "16:15:00", "pulang": "20:00:00"}, {"day": 22, "datang": "09:10:00", "pulang": "13:00:00"}, {"day": 24, "datang": "16.00 PM", "pulang": "20.00 PM"}, {"day": 26, "datang": "09.00 AM", "pulang": "13.00 AM"}, {"day": 28, "datang": "09.00:00", "pulang": "13.00 AM"}, {"day": 31, "datang": "16:00:00", "pulang": "20:00:00"}]},
+  {"id": 22, "name": "drg. Bambang", "position": "Dokter Gigi", "status": "Pengganti", "clinic": "CTM", "ket": "", "attendance": [{"day": 14, "datang": "16.00 PM", "pulang": "20.00 PM"}]},
+  {"id": 23, "name": "drg. Sabrina", "position": "Dokter Gigi", "status": "Pengganti", "clinic": "CTM", "ket": "", "attendance": [{"day": 19, "datang": "09.00 AM", "pulang": "13.00 AM"}]},
+  {"id": 24, "name": "dr. Nadila Nur Haspiani Putri", "position": "Dokter Umum", "status": "Tetap", "clinic": "MGM24", "ket": "LANJT JAGA DI KLINIK MJ", "attendance": [{"day": 1, "datang": "09.02", "pulang": "08.25"}, {"day": 8, "datang": "09.00", "pulang": "08.20"}, {"day": 15, "datang": "09.00", "pulang": "09.00"}, {"day": 22, "datang": "09.06", "pulang": "08.30"}, {"day": 29, "datang": "09.00", "pulang": "08.57"}]},
+  {"id": 25, "name": "dr. Putri Wulandari", "position": "Dokter Umum", "status": "Tetap", "clinic": "MGM24", "ket": "HABIS JAGA DI KLINIK BTA", "attendance": [{"day": 6, "datang": "09.40", "pulang": "09.00"}, {"day": 13, "datang": "09.34", "pulang": "09.00"}, {"day": 20, "datang": "09.44", "pulang": "09.00"}, {"day": 27, "datang": "09.30", "pulang": "09.00"}]},
+  {"id": 26, "name": "dr. Nafiz Aizal", "position": "Dokter Umum", "status": "Tetap", "clinic": "MGM24", "ket": "TELAT KARENA GAGE", "attendance": [{"day": 14, "datang": "10.15", "pulang": "09.00"}, {"day": 21, "datang": "10.08", "pulang": "09.00"}, {"day": 28, "datang": "10.10", "pulang": "09.00"}]},
+  {"id": 27, "name": "dr. Gabriella", "position": "Dokter Umum", "status": "Pengganti", "clinic": "MGM24", "ket": "", "attendance": [{"day": 5, "datang": "09.00", "pulang": "09.00"}, {"day": 12, "datang": "09.00", "pulang": "09.00"}]},
+  {"id": 28, "name": "dr. Ella", "position": "Dokter Umum", "status": "Pengganti", "clinic": "MGM24", "ket": "GANTI JAGA DR NAFIZ TGL 7", "attendance": [{"day": 7, "datang": "09.00", "pulang": "09.00"}, {"day": 19, "datang": "09.00", "pulang": "08.35"}]},
+  {"id": 29, "name": "dr. Widya", "position": "Dokter Umum", "status": "Pengganti", "clinic": "MGM24", "ket": "", "attendance": [{"day": 26, "datang": "09.05", "pulang": "09.00"}]},
+  {"id": 30, "name": "dr. Syasna", "position": "Dokter Umum", "status": "Pengganti", "clinic": "MGM24", "ket": "GANTI JAGA DR HUMAIRAH TGL 2 & 9", "attendance": [{"day": 2, "datang": "09.00", "pulang": "09.00"}, {"day": 9, "datang": "09.00", "pulang": "09.00"}]},
+  {"id": 31, "name": "dr. Humairah", "position": "Dokter Umum", "status": "Tetap", "clinic": "MGM24", "ket": "TELAT KARNA JALANAN DI TUTUP", "attendance": [{"day": 3, "datang": "09.10", "pulang": "09.00"}, {"day": 10, "datang": "09.05", "pulang": "09.00"}, {"day": 16, "datang": "09.10", "pulang": "09.00"}, {"day": 23, "datang": "09.15", "pulang": "09.00"}, {"day": 30, "datang": "09.40", "pulang": "09.00"}]},
+  {"id": 32, "name": "dr. Dwipa Ansori", "position": "Dokter Umum", "status": "Tetap", "clinic": "MJ", "ket": "", "attendance": [{"day": 4, "datang": "09.30", "pulang": "09.00"}, {"day": 11, "datang": "09.00", "pulang": "09.00"}, {"day": 18, "datang": "09.25", "pulang": "09.00"}, {"day": 25, "datang": "09.00", "pulang": "09.00"}]},
+  {"id": 33, "name": "dr. Nadila Nur Haspiani Putri", "position": "Dokter Umum", "status": "Tetap", "clinic": "MJ", "ket": "", "attendance": [{"day": 2, "datang": "09.00", "pulang": "09.00"}, {"day": 9, "datang": "09.00", "pulang": "09.00"}, {"day": 16, "datang": "09.00", "pulang": "09.00"}, {"day": 23, "datang": "09.00", "pulang": "09.00"}, {"day": 30, "datang": "09.00", "pulang": "09.00"}]},
+  {"id": 34, "name": "dr. Erpinna Lamria Siagian", "position": "Dokter Umum", "status": "Tetap", "clinic": "MJ", "ket": "", "attendance": [{"day": 5, "datang": "09.00", "pulang": "09.00"}, {"day": 6, "datang": "09.00", "pulang": "09.00"}, {"day": 12, "datang": "09.00", "pulang": "09.00"}, {"day": 13, "datang": "09.00", "pulang": "09.00"}, {"day": 19, "datang": "09.00", "pulang": "09.00"}, {"day": 20, "datang": "09.00", "pulang": "09.00"}, {"day": 26, "datang": "09.00", "pulang": "09.00"}, {"day": 27, "datang": "09.00", "pulang": "09.00"}]},
+  {"id": 35, "name": "dr. Muh. Alif", "position": "Dokter Umum", "status": "Tetap", "clinic": "MJ", "ket": "", "attendance": [{"day": 7, "datang": "09.00", "pulang": "09.00"}, {"day": 14, "datang": "09.00", "pulang": "09.00"}, {"day": 21, "datang": "09.00", "pulang": "09.00"}, {"day": 28, "datang": "09.00", "pulang": "09.00"}]},
+  {"id": 36, "name": "dr. Nadya Isra Miranti", "position": "Dokter Umum", "status": "Pengganti", "clinic": "MJ", "ket": "", "attendance": [{"day": 11, "datang": "10.00", "pulang": "09.00"}, {"day": 24, "datang": "09.00", "pulang": "09.00"}]},
+  {"id": 37, "name": "drg. Muhammad Fikri Prayodia", "position": "Dokter Gigi", "status": "Tetap", "clinic": "MJ", "ket": "", "attendance": [{"day": 1, "datang": "09.00", "pulang": "13.00"}, {"day": 6, "datang": "09.00", "pulang": "13.00"}, {"day": 8, "datang": "09.00", "pulang": "13.00"}, {"day": 14, "datang": "09.00", "pulang": "13.00"}, {"day": 15, "datang": "09.00", "pulang": "13.00"}, {"day": 21, "datang": "09.00", "pulang": "13.00"}, {"day": 22, "datang": "09.00", "pulang": "13.00"}, {"day": 28, "datang": "10.00", "pulang": "13.00"}]},
+  {"id": 38, "name": "drg. Rifqi Bayu Praditama", "position": "Dokter Gigi", "status": "Tetap", "clinic": "MJ", "ket": "", "attendance": [{"day": 2, "datang": "16.15", "pulang": "20.00"}, {"day": 3, "datang": "16.10", "pulang": "20.00"}, {"day": 9, "datang": "16.00", "pulang": "20.00"}, {"day": 10, "datang": "16.00", "pulang": "20.00"}, {"day": 16, "datang": "16.00", "pulang": "20.00"}, {"day": 17, "datang": "16.00", "pulang": "20.00"}, {"day": 23, "datang": "16.00", "pulang": "20.00"}, {"day": 24, "datang": "16.00", "pulang": "20.00"}, {"day": 30, "datang": "16.00", "pulang": "20.00"}]},
+  {"id": 39, "name": "drg. Farina", "position": "Dokter Gigi", "status": "Pengganti", "clinic": "MJ", "ket": "", "attendance": [{"day": 5, "datang": "09.00", "pulang": "13.00"}, {"day": 12, "datang": "09.00", "pulang": "13.00"}, {"day": 19, "datang": "09.00", "pulang": "13.00"}, {"day": 26, "datang": "09.00", "pulang": "13.00"}]},
+  {"id": 40, "name": "drg. Siti Khadijah", "position": "Dokter Gigi", "status": "Pengganti", "clinic": "MJ", "ket": "", "attendance": [{"day": 7, "datang": "16.00", "pulang": "20.00"}, {"day": 14, "datang": "16.00", "pulang": "20.00"}, {"day": 21, "datang": "16.00", "pulang": "20.00"}, {"day": 28, "datang": "16.00", "pulang": "20.00"}]},
+  {"id": 41, "name": "drg. Nindyo", "position": "Dokter Gigi", "status": "Pengganti", "clinic": "MJ", "ket": "", "attendance": [{"day": 11, "datang": "16.00", "pulang": "20.00"}, {"day": 18, "datang": "16.00", "pulang": "20.00"}, {"day": 25, "datang": "16.00", "pulang": "20.00"}]},
+  {"id": 42, "name": "drg. Seldi Salsalbila", "position": "Dokter Gigi", "status": "Tetap", "clinic": "MJ", "ket": "", "attendance": [{"day": 13, "datang": "17.00", "pulang": "20.00"}, {"day": 20, "datang": "17.00", "pulang": "20.00"}, {"day": 27, "datang": "17.00", "pulang": "20.00"}]},
+  {"id": 43, "name": "drg. Bambang", "position": "Dokter Gigi", "status": "Pengganti", "clinic": "MJ", "ket": "", "attendance": [{"day": 15, "datang": "16.00", "pulang": "20.00"}, {"day": 29, "datang": "16.00", "pulang": "20.00"}]},
+  {"id": 44, "name": "drg. Maria", "position": "Dokter Gigi", "status": "Pengganti", "clinic": "MJ", "ket": "", "attendance": [{"day": 22, "datang": "16.00", "pulang": "20.00"}]},
+  {"id": 45, "name": "drg. Aprillia", "position": "Dokter Gigi", "status": "Pengganti", "clinic": "MJ", "ket": "", "attendance": [{"day": 27, "datang": "09.00", "pulang": "13.00"}]},
+  {"id": 46, "name": "drg. Julius", "position": "Dokter Gigi", "status": "Pengganti", "clinic": "MJ", "ket": "", "attendance": [{"day": 31, "datang": "16.00", "pulang": "20.00"}]},
+  {"id": 47, "name": "drg. Ananda", "position": "Dokter Gigi", "status": "Pengganti", "clinic": "MJ", "ket": "", "attendance": [{"day": 1, "datang": "17.15", "pulang": "20.00"}, {"day": 4, "datang": "16.00", "pulang": "20.00"}, {"day": 6, "datang": "17.00", "pulang": "20.00"}, {"day": 8, "datang": "17.00", "pulang": "20.00"}, {"day": 13, "datang": "09.00", "pulang": "13.00"}, {"day": 20, "datang": "09.00", "pulang": "13.00"}, {"day": 29, "datang": "09.00", "pulang": "13.00"}]},
+  {"id": 48, "name": "dr. Achmad Imron", "position": "Dokter Umum", "status": "Pengganti", "clinic": "MM", "ket": "tanggal 11/10/2026 menggantikan dr dewi", "attendance": [{"day": 11, "datang": "09.00", "pulang": "09.00"}]},
+  {"id": 49, "name": "dr. Dewi Sartika Sianipar", "position": "Dokter Umum", "status": "Tetap", "clinic": "MM", "ket": "", "attendance": [{"day": 3, "datang": "09.00", "pulang": "09.00"}, {"day": 4, "datang": "09.00", "pulang": "08.30"}, {"day": 10, "datang": "09.00", "pulang": "09.00"}, {"day": 17, "datang": "09.00", "pulang": "09.00"}, {"day": 18, "datang": "09.00", "pulang": "09.00"}, {"day": 24, "datang": "09.00", "pulang": "09.00"}, {"day": 25, "datang": "09.00", "pulang": "09.00"}, {"day": 31, "datang": "09.00", "pulang": "09.00"}]},
+  {"id": 50, "name": "dr. Priska Anindya Hapsari HN", "position": "Dokter Umum", "status": "Tetap", "clinic": "MM", "ket": "", "attendance": [{"day": 1, "datang": "09.00", "pulang": "09.00"}, {"day": 7, "datang": "09.00", "pulang": "09.00"}, {"day": 8, "datang": "09.00", "pulang": "09.00"}, {"day": 14, "datang": "09.00", "pulang": "09.00"}, {"day": 15, "datang": "09.00", "pulang": "09.00"}, {"day": 21, "datang": "09.00", "pulang": "09.00"}, {"day": 22, "datang": "09.00", "pulang": "09.00"}, {"day": 28, "datang": "09.00", "pulang": "09.00"}, {"day": 29, "datang": "09.00", "pulang": "09.00"}]},
+  {"id": 51, "name": "dr. Raja Umar Ali Siregar", "position": "Dokter Umum", "status": "Tetap", "clinic": "MM", "ket": "tanggal 24/10/2026 dan 31/10/2026 Menggantikan dr priska", "attendance": [{"day": 24, "datang": "09.00", "pulang": "08.30"}]},
+  {"id": 52, "name": "dr. Roy Martin Alanam", "position": "Dokter Umum", "status": "Tetap", "clinic": "MM", "ket": "", "attendance": [{"day": 2, "datang": "09.50", "pulang": "09.00"}, {"day": 5, "datang": "09.00", "pulang": "09.00"}, {"day": 6, "datang": "09.00", "pulang": "09.00"}, {"day": 9, "datang": "09.00", "pulang": "09.00"}, {"day": 12, "datang": "09.00", "pulang": "09.00"}, {"day": 13, "datang": "09.00", "pulang": "09.00"}, {"day": 16, "datang": "09.00", "pulang": "09.00"}, {"day": 19, "datang": "09.00", "pulang": "09.00"}, {"day": 20, "datang": "09.00", "pulang": "09.00"}, {"day": 23, "datang": "09.00", "pulang": "08.45"}, {"day": 26, "datang": "09.00", "pulang": "09.00"}, {"day": 27, "datang": "09.00", "pulang": "09.00"}, {"day": 30, "datang": "09.00", "pulang": "09.00"}]},
+  {"id": 53, "name": "drg. Brigita Stefanie", "position": "Dokter Gigi", "status": "Tetap", "clinic": "MM", "ket": "", "attendance": [{"day": 2, "datang": "09.00", "pulang": "13.00"}, {"day": 6, "datang": "09.00", "pulang": "13.00"}, {"day": 13, "datang": "09.00", "pulang": "13.00"}, {"day": 16, "datang": "16.00", "pulang": "20.00"}, {"day": 20, "datang": "09.00", "pulang": "13.00"}, {"day": 21, "datang": "09.00", "pulang": "13.00"}, {"day": 23, "datang": "09.00", "pulang": "13.00"}, {"day": 27, "datang": "09.00", "pulang": "13.00"}, {"day": 28, "datang": "09.00", "pulang": "13.00"}, {"day": 30, "datang": "16.00", "pulang": "20.00"}, {"day": 31, "datang": "09.00", "pulang": "13.00"}]},
+  {"id": 54, "name": "drg. Ida Ayu Mutiana", "position": "Dokter Gigi", "status": "Tetap", "clinic": "MM", "ket": "", "attendance": [{"day": 3, "datang": "16.00", "pulang": "20.00"}, {"day": 10, "datang": "16.00", "pulang": "20.00"}, {"day": 17, "datang": "16.00", "pulang": "20.00"}, {"day": 24, "datang": "16.00", "pulang": "20.00"}]},
+  {"id": 55, "name": "drg. Insan Syah Alam", "position": "Dokter Gigi", "status": "Tetap", "clinic": "MM", "ket": "", "attendance": [{"day": 1, "datang": "16.30", "pulang": "20.00"}, {"day": 7, "datang": "16.30", "pulang": "20.00"}, {"day": 8, "datang": "16.30", "pulang": "20.00"}, {"day": 14, "datang": "16.30", "pulang": "20.00"}, {"day": 15, "datang": "16.30", "pulang": "20.00"}]},
+  {"id": 56, "name": "drg. Rifqi Adi Kelvianto", "position": "Dokter Gigi", "status": "Tetap", "clinic": "MM", "ket": " Di gantikkan oleh drg Shannon tgl 02/10/2026", "attendance": [{"day": 5, "datang": "16.30", "pulang": "20.00"}, {"day": 9, "datang": "16.30", "pulang": "20.00"}, {"day": 12, "datang": "16.30", "pulang": "20.00"}, {"day": 16, "datang": "16.30", "pulang": "20.00"}, {"day": 19, "datang": "16.30", "pulang": "20.00"}, {"day": 22, "datang": "16.30", "pulang": "20.00"}, {"day": 23, "datang": "16.30", "pulang": "20.00"}, {"day": 26, "datang": "16.30", "pulang": "20.00"}, {"day": 29, "datang": "16.30", "pulang": "20.00"}, {"day": 30, "datang": "16.30", "pulang": "20.00"}]},
+  {"id": 57, "name": "drg. Fadliyah", "position": "Dokter Gigi", "status": "Tetap", "clinic": "MM", "ket": "drg Dila tgl 27/10/2026 jaga 2 shift pukul 09.00-13.00 siang lalu di lanjut sore 16.00-20.00 malam", "attendance": [{"day": 5, "datang": "09.00", "pulang": "13.00"}, {"day": 6, "datang": "16.00", "pulang": "20.00"}, {"day": 8, "datang": "09.00", "pulang": "13.00"}, {"day": 12, "datang": "09.05", "pulang": "13.00"}, {"day": 13, "datang": "16.00", "pulang": "20.00"}, {"day": 15, "datang": "09.00", "pulang": "13.00"}, {"day": 19, "datang": "09.00", "pulang": "13.00"}, {"day": 20, "datang": "16.00", "pulang": "20.00"}, {"day": 22, "datang": "09.00", "pulang": "13.00"}, {"day": 26, "datang": "09.00", "pulang": "13.00"}, {"day": 27, "datang": "09.00//16.00", "pulang": "13.00//20.00"}, {"day": 29, "datang": "09.00", "pulang": "13.00"}]},
+  {"id": 58, "name": "drg. Cempaka Welen Yunesa", "position": "Dokter Gigi", "status": "Tetap", "clinic": "MM", "ket": "", "attendance": [{"day": 9, "datang": "09.00", "pulang": "13.00"}, {"day": 16, "datang": "09.00", "pulang": "13.00"}, {"day": 23, "datang": "09.00", "pulang": "13.00"}, {"day": 30, "datang": "09.00", "pulang": "13.00"}]},
+  {"id": 59, "name": "drg. Yuli Sudiarti", "position": "Dokter Gigi", "status": "Pengganti", "clinic": "MM", "ket": "", "attendance": [{"day": 21, "datang": "16.00", "pulang": "20.00"}]},
+  {"id": 60, "name": "drg. Shannon Winnie", "position": "Dokter Gigi", "status": "Pengganti", "clinic": "MM", "ket": "", "attendance": [{"day": 2, "datang": "16.00", "pulang": "20.00"}]},
+  {"id": 61, "name": "dr. Berlian Maurise Hendrawati", "position": "Dokter Umum", "status": "Tetap", "clinic": "PM", "ket": "LANJUT JAGA DI MITRA CAKUNG", "attendance": [{"day": 4, "datang": "09.00", "pulang": "lanjut"}, {"day": 5, "datang": "lanjut", "pulang": "08.25"}, {"day": 11, "datang": "09.00", "pulang": "lanjut"}, {"day": 12, "datang": "lanjut", "pulang": "08.52"}, {"day": 18, "datang": "09.00", "pulang": "lanjut"}, {"day": 19, "datang": "lanjut", "pulang": "08.45"}, {"day": 25, "datang": "09.00", "pulang": "09.00"}]},
+  {"id": 62, "name": "dr. Dwipa Ansori", "position": "Dokter Umum", "status": "Tetap", "clinic": "PM", "ket": "LANJUT JAGA DI BTA", "attendance": [{"day": 2, "datang": "09.11", "pulang": "09.00"}, {"day": 6, "datang": "09.10", "pulang": "08.56"}, {"day": 8, "datang": "09.13", "pulang": "09.00"}, {"day": 9, "datang": "09.21", "pulang": "09.00"}, {"day": 13, "datang": "09.22", "pulang": "08.40"}, {"day": 20, "datang": "09.00", "pulang": "08.50"}, {"day": 23, "datang": "09.00", "pulang": "08.30"}]},
+  {"id": 63, "name": "dr. Febrima Rahayu", "position": "Dokter Umum", "status": "Tetap", "clinic": "PM", "ket": "LANJUT JAGA DI CTM", "attendance": [{"day": 7, "datang": "09.00", "pulang": "07.30"}, {"day": 14, "datang": "09.02", "pulang": "07.30"}, {"day": 21, "datang": "09.12", "pulang": "08.30"}, {"day": 24, "datang": "09.07", "pulang": "09.00"}, {"day": 26, "datang": "09.08", "pulang": "08.45"}, {"day": 28, "datang": "09.00", "pulang": "07.40"}, {"day": 31, "datang": "09.08", "pulang": "09.00"}]},
+  {"id": 64, "name": "dr. Melvin Balo", "position": "Dokter Umum", "status": "Tetap", "clinic": "PM", "ket": "lnjut di cakung", "attendance": [{"day": 1, "datang": "09.19", "pulang": "08.54"}, {"day": 8, "datang": "09.03", "pulang": "09.00"}, {"day": 29, "datang": "09.09", "pulang": "09.00"}]},
+  {"id": 65, "name": "drg. Abigail Marisca Christy", "position": "Dokter Gigi", "status": "Tetap", "clinic": "PM", "ket": "", "attendance": [{"day": 5, "datang": "16.00", "pulang": "20.00"}, {"day": 14, "datang": "16.24", "pulang": "20.00"}, {"day": 19, "datang": "09.00", "pulang": "13.00"}]},
+  {"id": 66, "name": "drg. Brigita Stefanie", "position": "Dokter Gigi", "status": "Tetap", "clinic": "PM", "ket": "", "attendance": [{"day": 1, "datang": "16.00", "pulang": "20.00"}, {"day": 5, "datang": "09.00", "pulang": "13.00"}, {"day": 8, "datang": "16.00", "pulang": "20.00"}, {"day": 12, "datang": "16.07", "pulang": "20.00"}, {"day": 15, "datang": "16.00", "pulang": "20.00"}, {"day": 16, "datang": "09.10", "pulang": "13.00"}, {"day": 22, "datang": "16.00", "pulang": "20.00"}, {"day": 26, "datang": "16.05", "pulang": "20.00"}, {"day": 27, "datang": "16.05", "pulang": "20.00"}, {"day": 29, "datang": "16.00", "pulang": "20.00"}, {"day": 30, "datang": "09.09", "pulang": "13.00"}]},
+  {"id": 67, "name": "drg. Della Safitri Sugiyanto", "position": "Dokter Gigi", "status": "Tetap", "clinic": "PM", "ket": "", "attendance": [{"day": 1, "datang": "09.05", "pulang": "13.00"}, {"day": 2, "datang": "16.10", "pulang": "20.00"}, {"day": 7, "datang": "09.23", "pulang": "13.00"}, {"day": 8, "datang": "09.05", "pulang": "13.00"}, {"day": 14, "datang": "09.00", "pulang": "13.00"}, {"day": 15, "datang": "09.00", "pulang": "13.00"}, {"day": 21, "datang": "09.00", "pulang": "13.00"}, {"day": 22, "datang": "09.05", "pulang": "13.00"}, {"day": 24, "datang": "16.12", "pulang": "20.00"}, {"day": 28, "datang": "09.00", "pulang": "13.00"}, {"day": 29, "datang": "09.09", "pulang": "13.00"}]},
+  {"id": 68, "name": "drg. Fadliyah", "position": "Dokter Gigi", "status": "Tetap", "clinic": "PM", "ket": "PENGGANTI DRG. ABIGAIL SEDANG SAKIT", "attendance": [{"day": 3, "datang": "16.00", "pulang": "20.00"}, {"day": 7, "datang": "16.05", "pulang": "20.00"}, {"day": 8, "datang": "16.05", "pulang": "20.00"}, {"day": 10, "datang": "16.00", "pulang": "20.00"}, {"day": 17, "datang": "16.00", "pulang": "20.00"}, {"day": 21, "datang": "16.00", "pulang": "20.00"}, {"day": 23, "datang": "16.05", "pulang": "20.00"}, {"day": 28, "datang": "16.00", "pulang": "20.00"}, {"day": 29, "datang": "16.09", "pulang": "20.00"}, {"day": 30, "datang": "16.05", "pulang": "20.00"}]},
+  {"id": 69, "name": "drg. Finna Oktaviani", "position": "Dokter Gigi", "status": "Tetap", "clinic": "PM", "ket": "", "attendance": [{"day": 4, "datang": "16.00", "pulang": "20.00"}, {"day": 9, "datang": "16.00", "pulang": "20.00"}, {"day": 11, "datang": "16.00", "pulang": "20.00"}, {"day": 13, "datang": "16.00", "pulang": "20.00"}, {"day": 18, "datang": "16.00", "pulang": "20.00"}, {"day": 19, "datang": "09.06", "pulang": "13.00"}, {"day": 20, "datang": "09.00", "pulang": "13.00"}, {"day": 25, "datang": "16.00", "pulang": "20.00"}]},
+  {"id": 70, "name": "drg. Cempaka Welen Yunesa", "position": "Dokter Gigi", "status": "Tetap", "clinic": "PM", "ket": "", "attendance": [{"day": 3, "datang": "09.35", "pulang": "13.00"}, {"day": 10, "datang": "09.05", "pulang": "13.00"}, {"day": 17, "datang": "09.10", "pulang": "13.00"}, {"day": 24, "datang": "09.20", "pulang": "13.00"}]},
+  {"id": 71, "name": "dr. Ronald", "position": "Dokter Umum", "status": "Pengganti", "clinic": "PM", "ket": "", "attendance": [{"day": 3, "datang": "09.13", "pulang": "09.00"}]},
+  {"id": 72, "name": "dr. Sitti Atika", "position": "Dokter Umum", "status": "Tetap", "clinic": "PM", "ket": "", "attendance": [{"day": 10, "datang": "09.00", "pulang": "09.00"}, {"day": 11, "datang": "09.00", "pulang": "08.45"}]},
+  {"id": 73, "name": "dr. Nadya Isra Miranti", "position": "Dokter Umum", "status": "Pengganti", "clinic": "PM", "ket": "LANJUT JAGA DI MITRA CAKUNG DR PENGGANTI", "attendance": [{"day": 4, "datang": "09.32", "pulang": "08.45"}]},
+  {"id": 74, "name": "drg. Rachel Ferasima", "position": "Dokter Gigi", "status": "Pengganti", "clinic": "PM", "ket": "PENGGANTI DRG. FINNA SEDANG HAMIL", "attendance": [{"day": 6, "datang": "16.05", "pulang": "20.00"}, {"day": 16, "datang": "16.00", "pulang": "20.00"}, {"day": 27, "datang": "09.00", "pulang": "13.00"}]},
+  {"id": 75, "name": "dr. Syifa Syauqiyah", "position": "Dokter Umum", "status": "Pengganti", "clinic": "PM", "ket": "PENGGANTI DOKTER FEBRIMA", "attendance": [{"day": 10, "datang": "09.19", "pulang": "09.00"}, {"day": 15, "datang": "09.10", "pulang": "08.58"}, {"day": 17, "datang": "09.00", "pulang": "08.30"}]},
+  {"id": 76, "name": "dr. Saharning", "position": "Dokter Umum", "status": "Pengganti", "clinic": "PM", "ket": "", "attendance": [{"day": 16, "datang": "09.00", "pulang": "08.51"}]},
+  {"id": 77, "name": "drg. Nindyo Alifendry", "position": "Dokter Gigi", "status": "Pengganti", "clinic": "PM", "ket": "PENGGANTI DRG DELLA", "attendance": [{"day": 13, "datang": "09.00", "pulang": "13.00"}]},
+  {"id": 78, "name": "dr. Felicita", "position": "Dokter Umum", "status": "Pengganti", "clinic": "PM", "ket": "PENGGANTI DOKTER SITTI", "attendance": [{"day": 18, "datang": "10.13", "pulang": "07.50"}, {"day": 22, "datang": "09.07", "pulang": "08.35"}, {"day": 30, "datang": "09.07", "pulang": "08.07"}]},
+  {"id": 79, "name": "dr. Tecsya", "position": "Dokter Umum", "status": "Pengganti", "clinic": "PM", "ket": "PENGGANTI dr MELVIN", "attendance": [{"day": 25, "datang": "10.00", "pulang": "09.00"}, {"day": 27, "datang": "09.00", "pulang": "08.30"}]}
+];
+
+        // Dataset Jadwal Tetap Praktik Dokter (Berdasarkan Dokumen Excel Terbaru)
+        const defaultFixedSchedulesDataset = [
+            {
+                clinicName: "Klinik Pratama Medika",
+                code: "PRATAMA",
+                schedules: [
+                    { category: "Umum", time: "09.00 - 09.00 (24 Jam)", senin: "dr. Putri", selasa: "dr. Ica", rabu: "dr. Resky", kamis: "dr. Rizal", jumat: "dr. Putri", sabtu: "dr. Dwipa", minggu: "dr. Raja" },
+                    { category: "Gigi", time: "09.00 - 13.00 (Pagi)", senin: "drg. Lia", selasa: "drg. Lia", rabu: "-", kamis: "drg. Era", jumat: "drg. Lia", sabtu: "drg. Lilis", minggu: "Libur" },
+                    { category: "Gigi", time: "16.00 - 20.00 (Sore)", senin: "drg. Dilah", selasa: "drg. Lilis", rabu: "drg. Dilah", kamis: "drg. Lilis", jumat: "drg. Denta", sabtu: "drg. Denta", minggu: "Libur" },
+                    { category: "Sp. Kulit", time: "10.00 - 11.30 / 13.00", senin: "dr. Midi", selasa: "-", rabu: "-", kamis: "dr. Midi", jumat: "dr. Midi (13.00-15.00)*", sabtu: "-", minggu: "Libur" },
+                    { category: "Sp. THT", time: "08.00-10.00 / 16.00-18.00", senin: "dr. Anggri (08.00)", selasa: "dr. Anggri (16.00)", rabu: "dr. Anggri (16.00)", kamis: "dr. Anggri (08.00)", jumat: "-", sabtu: "-", minggu: "Libur" },
+                    { category: "Sp. Jantung", time: "14.00 - 16.00", senin: "dr. Erwin, Sp.JP", selasa: "dr. Erwin, Sp.JP", rabu: "-", kamis: "dr. Erwin, Sp.JP", jumat: "-", sabtu: "-", minggu: "Libur" },
+                    { category: "Sp. Anak", time: "15.00 - 18.00", senin: "-", selasa: "dr. Christine, Sp.A", rabu: "dr. Christine, Sp.A", kamis: "-", jumat: "-", sabtu: "dr. Christine, Sp.A", minggu: "Libur" }
+                ]
+            },
+            {
+                clinicName: "Klinik Mitra Cakung (CKG)",
+                code: "CKG",
+                schedules: [
+                    { category: "Umum", time: "09.00 - 09.00 (24 Jam)", senin: "dr. Rika Erna", selasa: "dr. Berlian", rabu: "dr. Berlian", kamis: "dr. Rika Erna", jumat: "dr. Melvin Balo", sabtu: "dr. M. Rizal", minggu: "dr. M. Rizal" },
+                    { category: "Gigi", time: "09.00 - 13.00 (Pagi)", senin: "drg. Dina Apriliana", selasa: "drg. M. Haidar", rabu: "drg. M. Haidar", kamis: "drg. Astu", jumat: "drg. Nadianisa", sabtu: "drg. Christopher Ryan", minggu: "Libur" },
+                    { category: "Gigi", time: "16.00 - 20.00 (Sore)", senin: "drg. Nadianisa", selasa: "drg. Christopher Ryan", rabu: "drg. Nadianisa", kamis: "drg. Christopher Ryan", jumat: "drg. Astu", sabtu: "drg. Dina Apriliana", minggu: "Libur" }
+                ]
+            },
+            {
+                clinicName: "Klinik Mitra Medika (MM)",
+                code: "MM",
+                schedules: [
+                    { category: "Umum", time: "09.00 - 09.00 (24 Jam)", senin: "dr. Roy Martin", selasa: "dr. Roy Martin", rabu: "dr. Raja Umar", kamis: "dr. Raja Umar", jumat: "dr. Roy Martin", sabtu: "dr. Priska Anindya", minggu: "dr. Dewi Sartika" },
+                    { category: "Gigi", time: "09.00 - 13.00 (Pagi)", senin: "drg. Fadliyah", selasa: "drg. Fadliyah", rabu: "drg. Brigita Stefanie", kamis: "drg. Brigita Stefanie", jumat: "drg. Fadliyah", sabtu: "drg. Ida Ayu", minggu: "Libur" },
+                    { category: "Gigi", time: "16.00 - 20.00 (Sore)", senin: "drg. Rifqi Adi", selasa: "drg. Brigita Stefanie", rabu: "drg. Insan Syah", kamis: "drg. Insan Syah", jumat: "drg. Rifqi Adi", sabtu: "drg. Cempaka Welen", minggu: "Libur" }
+                ]
+            },
+            {
+                clinicName: "Klinik MGM 24",
+                code: "MGM24",
+                schedules: [
+                    { category: "Umum", time: "09.00 - 09.00 (24 Jam)", senin: "dr. Hana", selasa: "dr. Putri Wulandari", rabu: "dr. Nafiz Aizal", kamis: "dr. Nadila Nur", jumat: "dr. Humairah", sabtu: "dr. Humairah", minggu: "dr. Humairah" }
+                ]
+            },
+            {
+                clinicName: "Klinik Citra Medika (CTM)",
+                code: "CTM",
+                schedules: [
+                    { category: "Umum", time: "09.00 - 09.00 (24 Jam)", senin: "dr. Raynhard Nicolas", selasa: "dr. Raynhard Nicolas", rabu: "dr. Raynhard Nicolas", kamis: "dr. Febrima Rahayu", jumat: "dr. Febrima Rahayu", sabtu: "dr. Sinsiwa Lamser", minggu: "dr. Sinsiwa Lamser" },
+                    { category: "Gigi", time: "09.00 - 13.00 (Pagi)", senin: "drg. Farhan Jordan", selasa: "drg. Abigail Marisca", rabu: "drg. Abigail Marisca", kamis: "drg. Farhan Jordan", jumat: "drg. Abigail Marisca", sabtu: "drg. Anisa Aulia", minggu: "Libur" },
+                    { category: "Gigi", time: "16.00 - 20.00 (Sore)", senin: "drg. Ruvi Putri", selasa: "drg. Khadijah", rabu: "drg. Khadijah", kamis: "drg. Anisa Aulia", jumat: "drg. Abigail Marisca", sabtu: "drg. Abigail Marisca", minggu: "Libur" }
+                ]
+            },
+            {
+                clinicName: "Klinik Prima Medika (PM)",
+                code: "PM",
+                schedules: [
+                    { category: "Umum", time: "09.00 - 09.00 (24 Jam)", senin: "dr. Berlian Maurise", selasa: "dr. Dwipa Ansori", rabu: "dr. Febrima Rahayu", kamis: "dr. Melvin Balo", jumat: "dr. Dwipa Ansori", sabtu: "dr. Febrima Rahayu", minggu: "dr. Sitti Atika" },
+                    { category: "Gigi", time: "09.00 - 13.00 (Pagi)", senin: "drg. Finna Oktaviani", selasa: "drg. Finna Oktaviani", rabu: "drg. Della Safitri", kamis: "drg. Della Safitri", jumat: "drg. Brigita Stefanie", sabtu: "drg. Cempaka Welen", minggu: "Libur" },
+                    { category: "Gigi", time: "16.00 - 20.00 (Sore)", senin: "drg. Brigita Stefanie", selasa: "drg. Finna Oktaviani", rabu: "drg. Abigail Marisca", kamis: "drg. Fadliyah", jumat: "drg. Fadliyah", sabtu: "drg. Della Safitri", minggu: "Libur" }
+                ]
+            },
+            {
+                clinicName: "Klinik Mitra Jatinegara (MJ)",
+                code: "MJ",
+                schedules: [
+                    { category: "Umum", time: "09.00 - 09.00 (24 Jam)", senin: "dr. Nadila Nur", selasa: "dr. Nadila Nur", rabu: "dr. Dwipa Ansori", kamis: "dr. Erpinna Lamria", jumat: "dr. Nadila Nur", sabtu: "dr. Muh. Alif", minggu: "dr. Dwipa Ansori" },
+                    { category: "Gigi", time: "09.00 - 13.00 (Pagi)", senin: "drg. M. Fikri", selasa: "drg. Farina", rabu: "drg. M. Fikri", kamis: "drg. Farina", jumat: "drg. Khadijah", sabtu: "drg. Khadijah", minggu: "Libur" },
+                    { category: "Gigi", time: "16.00 - 20.00 (Sore)", senin: "drg. Khadijah", selasa: "drg. Seldi Salsalbila", rabu: "drg. Rifqi Bayu P.", kamis: "drg. Seldi Salsalbila", jumat: "drg. Rifqi Bayu P.", sabtu: "drg. Rifqi Bayu P.", minggu: "Libur" }
+                ]
+            }
+        ];
+
+        let fixedSchedulesDataset = JSON.parse(localStorage.getItem('medika_schedules_data')) || JSON.parse(JSON.stringify(defaultFixedSchedulesDataset));
+        let doctorsState = JSON.parse(localStorage.getItem('medika_doctors_data')) || JSON.parse(JSON.stringify(rawDoctorDataset));
+        let selectedClinic = 'ALL';
+        let selectedScheduleClinic = 'ALL';
+        let selectedMonth = 10; // Default Oktober
+        let selectedYear = 2026; // Default 2026
+        let syncIntervalTimer = null;
+        let absenSyncIntervalTimer = null;
+
+        const monthNames = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+        const shortMonthNames = ["", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+
+        function getDaysInMonth(month, year) {
+            return new Date(year, month, 0).getDate();
+        }
+
+        function getPeriodKey() {
+            return `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`;
+        }
+
+        // Migrasi data lama Oktober 2026 agar mendukung struktur multi-periode (attendanceByPeriod)
+        function ensureMultiPeriodStructure() {
+            doctorsState.forEach(doc => {
+                if (!doc.attendanceByPeriod) {
+                    doc.attendanceByPeriod = {
+                        "2026-10": doc.attendance ? [...doc.attendance] : []
+                    };
+                }
+            });
+        }
+        ensureMultiPeriodStructure();
+
+        function getDoctorPeriodAttendance(doc) {
+            const key = getPeriodKey();
+            if (!doc.attendanceByPeriod) doc.attendanceByPeriod = {};
+            if (!doc.attendanceByPeriod[key]) doc.attendanceByPeriod[key] = [];
+            return doc.attendanceByPeriod[key];
+        }
+
+        function changePeriod() {
+            selectedMonth = parseInt(document.getElementById('filter-month').value);
+            selectedYear = parseInt(document.getElementById('filter-year').value);
+            
+            const fullLabel = `${monthNames[selectedMonth]} ${selectedYear}`;
+            
+            document.getElementById('table-period-title').textContent = fullLabel;
+            
+            initFilters();
+            renderApp();
+        }
+
+        function showToast(msg, isError = false) {
+            const toast = document.getElementById('toast-notification');
+            const icon = document.getElementById('toast-icon');
+            const text = document.getElementById('toast-message');
+            text.textContent = msg;
+            icon.className = isError ? 'fa-solid fa-circle-exclamation text-rose-400 text-base' : 'fa-solid fa-circle-check text-emerald-400 text-base';
+            toast.classList.remove('hidden', 'translate-y-2', 'opacity-0');
+            setTimeout(() => {
+                toast.classList.add('translate-y-2', 'opacity-0');
+                setTimeout(() => toast.classList.add('hidden'), 300);
+            }, 3500);
+        }
+
+        function switchMainTab(tabKey) {
+            const rekapSec = document.getElementById('section-rekap');
+            const jadwalSec = document.getElementById('section-jadwal');
+            const tabRekapBtn = document.getElementById('nav-tab-rekap');
+            const tabJadwalBtn = document.getElementById('nav-tab-jadwal');
+
+            if (tabKey === 'rekap') {
+                rekapSec.classList.remove('hidden');
+                jadwalSec.classList.add('hidden');
+                tabRekapBtn.className = "px-4 py-2 rounded-lg text-xs font-semibold transition flex items-center gap-2 bg-indigo-600 text-white shadow-sm";
+                tabJadwalBtn.className = "px-4 py-2 rounded-lg text-xs font-semibold transition flex items-center gap-2 text-indigo-200 hover:text-white hover:bg-indigo-800/50";
+            } else {
+                rekapSec.classList.add('hidden');
+                jadwalSec.classList.remove('hidden');
+                tabJadwalBtn.className = "px-4 py-2 rounded-lg text-xs font-semibold transition flex items-center gap-2 bg-indigo-600 text-white shadow-sm";
+                tabRekapBtn.className = "px-4 py-2 rounded-lg text-xs font-semibold transition flex items-center gap-2 text-indigo-200 hover:text-white hover:bg-indigo-800/50";
+                renderFixedSchedules();
+            }
+        }
+
+        function parseTimeToMinutes(tStr) {
+            if (!tStr || tStr.toLowerCase().includes('nan') || tStr.toLowerCase().includes('lanjut')) return null;
+            let clean = tStr.replace(',', '.').replace(/[^0-9\.:]/g, '');
+            if (!clean) return null;
+            try {
+                if (clean.includes(':')) {
+                    let parts = clean.split(':');
+                    return parseInt(parts[0]) * 60 + parseInt(parts[1]);
+                } else if (clean.includes('.')) {
+                    let parts = clean.split('.');
+                    return parseInt(parts[0]) * 60 + parseInt(parts[1]);
+                } else if (clean.length === 4) {
+                    return parseInt(clean.substring(0, 2)) * 60 + parseInt(clean.substring(2));
+                }
+            } catch(e) { return null; }
+            return null;
+        }
+
+        function evaluateAttendanceStatus(doc, dayRecord) {
+            let dMin = parseTimeToMinutes(dayRecord.datang);
+            let pMin = parseTimeToMinutes(dayRecord.pulang);
+            let isLate = false;
+            let minsLate = 0;
+            let expectedStart = "09.00";
+
+            if (doc.position.toLowerCase().includes('umum')) {
+                expectedStart = "09.00";
+                if (dMin !== null && dMin > 540 + 10) {
+                    isLate = true;
+                    minsLate = dMin - 540;
+                }
+            } else {
+                let isPuskesmas = dayRecord.isPuskesmas || false;
+                if (dMin !== null) {
+                    if (dMin < 840) {
+                        expectedStart = "09.00";
+                        if (dMin > 540 + 10) {
+                            isLate = true;
+                            minsLate = dMin - 540;
+                        }
+                    } else {
+                        if (doc.name.toLowerCase().includes('seldi')) {
+                            expectedStart = "17.00";
+                            if (dMin > 1020 + 10) {
+                                isLate = true;
+                                minsLate = dMin - 1020;
+                            }
+                        } else if (isPuskesmas) {
+                            expectedStart = "16.30 (Puskesmas)";
+                            if (dMin > 990 + 10) {
+                                isLate = true;
+                                minsLate = dMin - 990;
+                            }
+                        } else {
+                            expectedStart = "16.00";
+                            if (dMin > 960 + 10) {
+                                isLate = true;
+                                minsLate = dMin - 960;
+                            }
+                        }
+                    }
+                }
+            }
+
+            let isEarly = false;
+            let minsEarly = 0;
+            let expectedEnd = "";
+            if (pMin !== null) {
+                if (doc.position.toLowerCase().includes('umum')) {
+                    if (pMin < 540 && pMin > 300) {
+                        isEarly = true;
+                        minsEarly = 540 - pMin;
+                        expectedEnd = "09.00";
+                    }
+                } else {
+                    if (pMin < 780 - 15 && pMin >= 600) {
+                        isEarly = true;
+                        minsEarly = 780 - pMin;
+                        expectedEnd = "13.00";
+                    } else if (pMin < 1200 - 15 && pMin >= 1020) {
+                        isEarly = true;
+                        minsEarly = 1200 - pMin;
+                        expectedEnd = "20.00";
+                    }
+                }
+            }
+
+            return { isLate, minsLate, expectedStart, isEarly, minsEarly, expectedEnd };
+        }
+
+        function initFilters() {
+            const daysInMonth = getDaysInMonth(selectedMonth, selectedYear);
+            const mName = monthNames[selectedMonth];
+            const dateSelect = document.getElementById('filter-date');
+            const prevVal = dateSelect.value;
+            dateSelect.innerHTML = `<option value="ALL">Semua Tanggal (1 - ${daysInMonth} ${shortMonthNames[selectedMonth]})</option>`;
+            for (let i = 1; i <= daysInMonth; i++) {
+                let opt = document.createElement('option');
+                opt.value = i;
+                opt.textContent = `Tanggal ${i} ${mName} ${selectedYear}`;
+                dateSelect.appendChild(opt);
+            }
+            if (prevVal !== 'ALL' && parseInt(prevVal) <= daysInMonth) {
+                dateSelect.value = prevVal;
+            }
+
+            const clinics = ['ALL', 'CKG', 'CTM', 'MGM24', 'MJ', 'MM', 'PM'];
+            const clinicContainer = document.getElementById('clinic-chips');
+            clinicContainer.innerHTML = '';
+
+            clinics.forEach(c => {
+                let btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = `px-3 py-1.5 rounded-lg text-xs font-semibold transition border ${
+                    selectedClinic === c 
+                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' 
+                    : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
+                }`;
+                btn.textContent = c === 'ALL' ? 'Semua Klinik' : `Klinik ${c}`;
+                btn.onclick = () => {
+                    selectedClinic = c;
+                    initFilters();
+                    renderApp();
+                };
+                clinicContainer.appendChild(btn);
+            });
+
+            const scheduleClinics = [
+                { key: 'ALL', label: 'Semua Unit Klinik' },
+                ...fixedSchedulesDataset.map(u => ({
+                    key: u.clinicName,
+                    label: u.clinicName.replace(/^Klinik\s+/i, '')
+                }))
+            ];
+
+            const scheduleClinicContainer = document.getElementById('schedule-clinic-chips');
+            scheduleClinicContainer.innerHTML = '';
+
+            scheduleClinics.forEach(c => {
+                let btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = `px-3 py-1.5 rounded-lg text-xs font-semibold transition border ${
+                    selectedScheduleClinic === c.key 
+                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' 
+                    : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
+                }`;
+                btn.textContent = c.label;
+                btn.onclick = () => {
+                    selectedScheduleClinic = c.key;
+                    initFilters();
+                    renderFixedSchedules();
+                };
+                scheduleClinicContainer.appendChild(btn);
+            });
+        }
+
+        function renderApp() {
+            const searchVal = document.getElementById('search-input').value.toLowerCase().trim();
+            const dateVal = document.getElementById('filter-date').value;
+            const posVal = document.getElementById('filter-position').value;
+            const statusVal = document.getElementById('filter-status').value;
+            const disciplineVal = document.getElementById('filter-discipline').value;
+
+            let totalDoctors = 0;
+            let totalShifts = 0;
+            let totalLateEvents = 0;
+            let totalEarlyEvents = 0;
+
+            const tableBody = document.getElementById('doctor-table-body');
+            tableBody.innerHTML = '';
+
+            let filteredDoctors = doctorsState.filter(doc => {
+                if (selectedClinic !== 'ALL' && doc.clinic !== selectedClinic) return false;
+                if (posVal !== 'ALL' && !doc.position.toLowerCase().includes(posVal.toLowerCase().split(' ')[1])) return false;
+                if (statusVal !== 'ALL' && !doc.status.toLowerCase().includes(statusVal.toLowerCase())) return false;
+                if (searchVal && !doc.name.toLowerCase().includes(searchVal)) return false;
+                return true;
+            });
+
+            let rowCount = 0;
+
+            filteredDoctors.forEach((doc) => {
+                const periodAtt = getDoctorPeriodAttendance(doc);
+                let attRecords = periodAtt.filter(a => {
+                    if (dateVal !== 'ALL' && a.day != dateVal) return false;
+                    return true;
+                });
+
+                if (attRecords.length === 0 && dateVal !== 'ALL') return;
+
+                rowCount++;
+                totalDoctors++;
+
+                let docShiftCount = attRecords.length;
+                totalShifts += docShiftCount;
+
+                let docLateCount = 0;
+                let docEarlyCount = 0;
+
+                attRecords.forEach(a => {
+                    let evalRes = evaluateAttendanceStatus(doc, a);
+                    if (evalRes.isLate) docLateCount++;
+                    if (evalRes.isEarly) docEarlyCount++;
+                });
+
+                totalLateEvents += docLateCount;
+                totalEarlyEvents += docEarlyCount;
+
+                if (disciplineVal === 'LATE' && docLateCount === 0) return;
+                if (disciplineVal === 'EARLY' && docEarlyCount === 0) return;
+                if (disciplineVal === 'NOTES' && !doc.ket) return;
+
+                let tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-50/80 transition text-xs';
+
+                tr.innerHTML = `
+                    <td class="py-3 px-4 text-center font-medium text-slate-400">${rowCount}</td>
+                    <td class="py-3 px-4"><span class="font-bold text-slate-900 block text-xs">${doc.name}</span></td>
+                    <td class="py-3 px-4">
+                        <span class="px-2 py-0.5 rounded text-[11px] font-semibold ${
+                            doc.position.toLowerCase().includes('umum') ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-teal-50 text-teal-700 border border-teal-200'
+                        }">${doc.position}</span>
+                    </td>
+                    <td class="py-3 px-4">
+                        <span class="px-2 py-0.5 rounded text-[11px] font-semibold ${
+                            doc.status.toLowerCase().includes('tetap') ? 'bg-slate-100 text-slate-700 border border-slate-200' : 'bg-amber-50 text-amber-700 border border-amber-200'
+                        }">${doc.status}</span>
+                    </td>
+                    <td class="py-3 px-4 font-bold text-indigo-900">${doc.clinic}</td>
+                    <td class="py-3 px-4 text-center font-bold text-emerald-600">${docShiftCount} Shift</td>
+                    <td class="py-3 px-4 text-center">
+                        ${docLateCount > 0 ? `<span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold text-[11px]">${docLateCount}x Telat</span>` : `<span class="text-slate-400 font-medium">-</span>`}
+                    </td>
+                    <td class="py-3 px-4 text-center">
+                        ${docEarlyCount > 0 ? `<span class="px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 font-bold text-[11px]">${docEarlyCount}x Cepat</span>` : `<span class="text-slate-400 font-medium">-</span>`}
+                    </td>
+                    <td class="py-3 px-4 max-w-xs truncate text-slate-600">
+                        ${doc.ket ? `<span class="text-amber-700 font-medium"><i class="fa-solid fa-note-sticky text-amber-500 mr-1"></i>${doc.ket}</span>` : '<span class="text-slate-400 italic">-</span>'}
+                    </td>
+                    <td class="py-3 px-4 text-center">
+                        <div class="flex items-center justify-center gap-1.5">
+                            <button onclick="openDetailModal(${doc.id})" class="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold rounded-lg text-xs transition flex items-center gap-1">
+                                <i class="fa-solid fa-eye text-xs"></i> Absen
+                            </button>
+                            <button onclick="openEditDoctorModal(${doc.id})" class="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 font-semibold rounded-lg text-xs transition flex items-center gap-1">
+                                <i class="fa-solid fa-user-pen text-xs"></i> Edit Dokter
+                            </button>
+                        </div>
+                    </td>
+                `;
+                tableBody.appendChild(tr);
+            });
+
+            document.getElementById('stat-total-doctors').textContent = totalDoctors;
+            document.getElementById('stat-total-shifts').textContent = totalShifts;
+            document.getElementById('stat-total-late').textContent = totalLateEvents;
+            document.getElementById('stat-total-early').textContent = totalEarlyEvents;
+            document.getElementById('table-row-count').textContent = `Menampilkan ${rowCount} dokter`;
+        }
+
+        function renderFixedSchedules() {
+            const container = document.getElementById('schedule-cards-container');
+            container.innerHTML = '';
+
+            const searchVal = document.getElementById('search-schedule-input').value.toLowerCase().trim();
+            const posVal = document.getElementById('schedule-filter-position').value;
+            const dayVal = document.getElementById('schedule-filter-day').value.toLowerCase();
+
+            fixedSchedulesDataset.forEach(unit => {
+                if (selectedScheduleClinic !== 'ALL' && unit.clinicName !== selectedScheduleClinic) return;
+
+                let filteredSchedules = unit.schedules.filter(sch => {
+                    if (posVal !== 'ALL' && !sch.category.toLowerCase().includes(posVal.toLowerCase())) return false;
+                    
+                    if (searchVal) {
+                        let matchName = sch.category.toLowerCase().includes(searchVal) ||
+                                        sch.senin.toLowerCase().includes(searchVal) ||
+                                        sch.selasa.toLowerCase().includes(searchVal) ||
+                                        sch.rabu.toLowerCase().includes(searchVal) ||
+                                        sch.kamis.toLowerCase().includes(searchVal) ||
+                                        sch.jumat.toLowerCase().includes(searchVal) ||
+                                        sch.sabtu.toLowerCase().includes(searchVal) ||
+                                        sch.minggu.toLowerCase().includes(searchVal);
+                        if (!matchName) return false;
+                    }
+                    return true;
+                });
+
+                if (filteredSchedules.length === 0) return;
+
+                let cardHtml = `
+                    <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div class="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
+                            <div class="flex items-center space-x-3">
+                                <div class="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center font-bold text-sm">
+                                    <i class="fa-solid fa-hospital"></i>
+                                </div>
+                                <h3 class="font-bold text-base tracking-wide">${unit.clinicName}</h3>
+                            </div>
+                            <span class="text-xs px-2.5 py-1 bg-indigo-800 text-indigo-200 rounded-md font-semibold">${filteredSchedules.length} Jadwal Layanan</span>
+                        </div>
+                        <div class="overflow-x-auto custom-scrollbar">
+                            <table class="w-full text-left text-xs border-collapse">
+                                <thead>
+                                    <tr class="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 uppercase tracking-wider text-[11px]">
+                                        <th class="py-3 px-4">Spesialisasi / Poli</th>
+                                        <th class="py-3 px-4">Jam Praktik</th>
+                                        <th class="py-3 px-3 ${dayVal === 'senin' ? 'bg-indigo-100 text-indigo-900' : ''}">Senin</th>
+                                        <th class="py-3 px-3 ${dayVal === 'selasa' ? 'bg-indigo-100 text-indigo-900' : ''}">Selasa</th>
+                                        <th class="py-3 px-3 ${dayVal === 'rabu' ? 'bg-indigo-100 text-indigo-900' : ''}">Rabu</th>
+                                        <th class="py-3 px-3 ${dayVal === 'kamis' ? 'bg-indigo-100 text-indigo-900' : ''}">Kamis</th>
+                                        <th class="py-3 px-3 ${dayVal === 'jumat' ? 'bg-indigo-100 text-indigo-900' : ''}">Jumat</th>
+                                        <th class="py-3 px-3 ${dayVal === 'sabtu' ? 'bg-indigo-100 text-indigo-900' : ''}">Sabtu</th>
+                                        <th class="py-3 px-3 ${dayVal === 'minggu' ? 'bg-indigo-100 text-indigo-900' : ''}">Minggu</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100">
+                `;
+
+                filteredSchedules.forEach(s => {
+                    cardHtml += `
+                        <tr class="hover:bg-slate-50 transition text-xs">
+                            <td class="py-3.5 px-4 font-bold text-slate-900">
+                                <span class="px-2 py-0.5 rounded text-[11px] ${
+                                    s.category.includes('Umum') ? 'bg-blue-50 text-blue-700 border border-blue-200' :
+                                    s.category.includes('Gigi') ? 'bg-teal-50 text-teal-700 border border-teal-200' :
+                                    'bg-purple-50 text-purple-700 border border-purple-200'
+                                }">${s.category}</span>
+                            </td>
+                            <td class="py-3.5 px-4 font-semibold text-slate-600 whitespace-nowrap">${s.time}</td>
+                            <td class="py-3.5 px-3 font-medium ${s.senin.includes('Libur') || s.senin === '-' ? 'text-slate-300' : 'text-slate-800 font-semibold'} ${dayVal === 'senin' ? 'bg-indigo-50/70' : ''}">${s.senin}</td>
+                            <td class="py-3.5 px-3 font-medium ${s.selasa.includes('Libur') || s.selasa === '-' ? 'text-slate-300' : 'text-slate-800 font-semibold'} ${dayVal === 'selasa' ? 'bg-indigo-50/70' : ''}">${s.selasa}</td>
+                            <td class="py-3.5 px-3 font-medium ${s.rabu.includes('Libur') || s.rabu === '-' ? 'text-slate-300' : 'text-slate-800 font-semibold'} ${dayVal === 'rabu' ? 'bg-indigo-50/70' : ''}">${s.rabu}</td>
+                            <td class="py-3.5 px-3 font-medium ${s.kamis.includes('Libur') || s.kamis === '-' ? 'text-slate-300' : 'text-slate-800 font-semibold'} ${dayVal === 'kamis' ? 'bg-indigo-50/70' : ''}">${s.kamis}</td>
+                            <td class="py-3.5 px-3 font-medium ${s.jumat.includes('Libur') || s.jumat === '-' ? 'text-slate-300' : 'text-slate-800 font-semibold'} ${dayVal === 'jumat' ? 'bg-indigo-50/70' : ''}">${s.jumat}</td>
+                            <td class="py-3.5 px-3 font-medium ${s.sabtu.includes('Libur') || s.sabtu === '-' ? 'text-slate-300' : 'text-slate-800 font-semibold'} ${dayVal === 'sabtu' ? 'bg-indigo-50/70' : ''}">${s.sabtu}</td>
+                            <td class="py-3.5 px-3 font-medium ${s.minggu.includes('Libur') || s.minggu === '-' ? 'text-slate-300' : 'text-slate-800 font-semibold'} ${dayVal === 'minggu' ? 'bg-indigo-50/70' : ''}">${s.minggu}</td>
+                        </tr>
+                    `;
+                });
+
+                cardHtml += `
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+                container.innerHTML += cardHtml;
+            });
+
+            if (container.innerHTML === '') {
+                container.innerHTML = `
+                    <div class="bg-white p-8 rounded-xl border border-slate-200 text-center text-slate-500">
+                        <i class="fa-solid fa-calendar-xmark text-3xl text-slate-300 mb-2"></i>
+                        <p class="font-medium text-xs">Jadwal tidak ditemukan berdasarkan filter yang dipilih.</p>
+                    </div>
+                `;
+            }
+        }
+
+        function openDetailModal(docId) {
+            const doc = doctorsState.find(d => d.id === docId);
+            if (!doc) return;
+
+            const fullPeriod = `${monthNames[selectedMonth]} ${selectedYear}`;
+            document.getElementById('modal-doc-name').textContent = doc.name;
+            document.getElementById('modal-doc-sub').textContent = `${doc.position} • Status: ${doc.status}`;
+            document.getElementById('modal-clinic-badge').textContent = `Klinik ${doc.clinic}`;
+            document.getElementById('modal-period-label').textContent = monthNames[selectedMonth];
+            document.getElementById('modal-history-period').textContent = fullPeriod;
+            document.getElementById('modal-general-note').textContent = doc.ket || 'Tidak ada catatan khusus di spreadsheet.';
+            
+            const editBtn = document.getElementById('modal-edit-doctor-btn');
+            if (editBtn) {
+                editBtn.onclick = () => {
+                    closeDetailModal();
+                    openEditDoctorModal(docId);
+                };
+            }
+
+            const addShiftBtn = document.getElementById('modal-add-shift-btn');
+            if (addShiftBtn) {
+                addShiftBtn.onclick = () => {
+                    closeDetailModal();
+                    openAddAttendanceModal(docId);
+                };
+            }
+
+            const periodAtt = getDoctorPeriodAttendance(doc);
+            let totalShift = periodAtt.length;
+            let lateCount = 0;
+            let earlyCount = 0;
+
+            const attTableBody = document.getElementById('modal-attendance-rows');
+            attTableBody.innerHTML = '';
+
+            let sortedAtt = [...periodAtt].sort((a,b) => a.day - b.day);
+
+            if (sortedAtt.length === 0) {
+                attTableBody.innerHTML = `<tr><td colspan="5" class="py-6 text-center text-slate-400 italic">Belum ada catatan absensi pada periode ${fullPeriod}. Klik "+ Tambah Shift" untuk mulai mencatat.</td></tr>`;
+            }
+
+            sortedAtt.forEach(att => {
+                let evalRes = evaluateAttendanceStatus(doc, att);
+                if (evalRes.isLate) lateCount++;
+                if (evalRes.isEarly) earlyCount++;
+
+                let tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-50 text-xs';
+
+                let statusBadge = `<span class="px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">Tepat Waktu</span>`;
+                if (evalRes.isLate) {
+                    statusBadge = `<span class="px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-100 text-amber-800 border border-amber-300">Terlambat ${evalRes.minsLate}m (dari ${evalRes.expectedStart})</span>`;
+                }
+
+                let earlyBadge = '';
+                if (evalRes.isEarly) {
+                    earlyBadge = `<span class="ml-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-purple-100 text-purple-800 border border-purple-300">Pulang Cepat ${evalRes.minsEarly}m</span>`;
+                }
+
+                let puskBadge = att.isPuskesmas ? `<span class="ml-1 px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 text-[10px] font-bold">Puskesmas</span>` : '';
+
+                tr.innerHTML = `
+                    <td class="py-2.5 px-3 font-semibold text-slate-800">${shortMonthNames[selectedMonth]} ${att.day}, ${selectedYear} ${puskBadge}</td>
+                    <td class="py-2.5 px-3 text-center font-bold text-slate-700">${att.datang || '-'}</td>
+                    <td class="py-2.5 px-3 text-center font-bold text-slate-700">${att.pulang || '-'}</td>
+                    <td class="py-2.5 px-3">${statusBadge} ${earlyBadge}</td>
+                    <td class="py-2.5 px-3 text-center">
+                        <div class="flex items-center justify-center gap-2">
+                            <button onclick="openEditEntryModal(${doc.id}, ${att.day})" class="text-indigo-600 hover:text-indigo-800 font-semibold text-xs flex items-center gap-1">
+                                <i class="fa-solid fa-pen"></i> Edit
+                            </button>
+                            <button onclick="deleteAttendanceEntry(${doc.id}, ${att.day})" class="text-rose-500 hover:text-rose-700 font-semibold text-xs flex items-center gap-1">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
+                        </div>
+                    </td>
+                `;
+                attTableBody.appendChild(tr);
+            });
+
+            document.getElementById('modal-shift-count').textContent = `${totalShift} Shift`;
+            document.getElementById('modal-late-count').textContent = `${lateCount} Shift`;
+            document.getElementById('modal-early-count').textContent = `${earlyCount} Shift`;
+
+            document.getElementById('detail-modal').classList.remove('hidden');
+        }
+
+        function closeDetailModal() {
+            document.getElementById('detail-modal').classList.add('hidden');
+        }
+
+        function openEditDoctorModal(docId) {
+            const doc = doctorsState.find(d => d.id === docId);
+            if (!doc) return;
+
+            document.getElementById('edit-profile-doc-id').value = doc.id;
+            document.getElementById('edit-profile-name').value = doc.name;
+            document.getElementById('edit-profile-position').value = doc.position;
+            document.getElementById('edit-profile-status').value = doc.status;
+            document.getElementById('edit-profile-clinic').value = doc.clinic;
+            document.getElementById('edit-profile-ket').value = doc.ket || '';
+
+            document.getElementById('edit-doctor-modal').classList.remove('hidden');
+        }
+
+        function closeEditDoctorModal() {
+            document.getElementById('edit-doctor-modal').classList.add('hidden');
+        }
+
+        function saveDoctorProfile(e) {
+            e.preventDefault();
+            const docId = parseInt(document.getElementById('edit-profile-doc-id').value);
+            const name = document.getElementById('edit-profile-name').value.trim();
+            const position = document.getElementById('edit-profile-position').value;
+            const status = document.getElementById('edit-profile-status').value;
+            const clinic = document.getElementById('edit-profile-clinic').value;
+            const ket = document.getElementById('edit-profile-ket').value.trim();
+
+            let doc = doctorsState.find(d => d.id === docId);
+            if (doc) {
+                doc.name = name;
+                doc.position = position;
+                doc.status = status;
+                doc.clinic = clinic;
+                doc.ket = ket;
+
+                localStorage.setItem('medika_doctors_data', JSON.stringify(doctorsState));
+
+                closeEditDoctorModal();
+                renderApp();
+            }
+        }
+
+        function openEditEntryModal(docId, day) {
+            const doc = doctorsState.find(d => d.id === docId);
+            if (!doc) return;
+            const periodAtt = getDoctorPeriodAttendance(doc);
+            const att = periodAtt.find(a => a.day === day);
+            if (!att) return;
+
+            document.getElementById('edit-doc-id').value = docId;
+            document.getElementById('edit-day').value = day;
+            document.getElementById('edit-doc-info').value = `${doc.name} - Tanggal ${day} ${monthNames[selectedMonth]} ${selectedYear}`;
+            document.getElementById('edit-datang').value = att.datang || '';
+            document.getElementById('edit-pulang').value = att.pulang || '';
+            document.getElementById('edit-is-puskesmas').checked = att.isPuskesmas || false;
+            document.getElementById('edit-ket').value = doc.ket || '';
+
+            document.getElementById('edit-entry-modal').classList.remove('hidden');
+        }
+
+        function closeEditEntryModal() {
+            document.getElementById('edit-entry-modal').classList.add('hidden');
+        }
+
+        function saveAttendanceEntry(e) {
+            e.preventDefault();
+            const docId = parseInt(document.getElementById('edit-doc-id').value);
+            const day = parseInt(document.getElementById('edit-day').value);
+            const newDatang = document.getElementById('edit-datang').value.trim();
+            const newPulang = document.getElementById('edit-pulang').value.trim();
+            const isPuskesmas = document.getElementById('edit-is-puskesmas').checked;
+            const newKet = document.getElementById('edit-ket').value.trim();
+
+            let doc = doctorsState.find(d => d.id === docId);
+            if (doc) {
+                const periodAtt = getDoctorPeriodAttendance(doc);
+                let att = periodAtt.find(a => a.day === day);
+                if (att) {
+                    att.datang = newDatang;
+                    att.pulang = newPulang;
+                    att.isPuskesmas = isPuskesmas;
+                }
+                if (newKet) doc.ket = newKet;
+
+                localStorage.setItem('medika_doctors_data', JSON.stringify(doctorsState));
+
+                closeEditEntryModal();
+                openDetailModal(docId);
+                renderApp();
+                showToast('Jam absensi berhasil disimpan.');
+            }
+        }
+
+        function deleteAttendanceEntry(docId, day) {
+            let doc = doctorsState.find(d => d.id === docId);
+            if (!doc) return;
+            const key = getPeriodKey();
+            doc.attendanceByPeriod[key] = doc.attendanceByPeriod[key].filter(a => a.day !== day);
+            localStorage.setItem('medika_doctors_data', JSON.stringify(doctorsState));
+            openDetailModal(docId);
+            renderApp();
+            showToast('Catatan shift dihapus.');
+        }
+
+        function openAddAttendanceModal(preselectDocId = null) {
+            const fullPeriod = `${monthNames[selectedMonth]} ${selectedYear}`;
+            document.getElementById('add-modal-period-label').textContent = fullPeriod;
+
+            const docSelect = document.getElementById('add-att-doc-id');
+            docSelect.innerHTML = '';
+            doctorsState.forEach(d => {
+                let opt = document.createElement('option');
+                opt.value = d.id;
+                opt.textContent = `${d.name} (${d.clinic} - ${d.position})`;
+                docSelect.appendChild(opt);
+            });
+            if (preselectDocId) docSelect.value = preselectDocId;
+
+            const daySelect = document.getElementById('add-att-day');
+            daySelect.innerHTML = '';
+            const daysInMonth = getDaysInMonth(selectedMonth, selectedYear);
+            for (let i = 1; i <= daysInMonth; i++) {
+                let opt = document.createElement('option');
+                opt.value = i;
+                opt.textContent = `Tanggal ${i} ${fullPeriod}`;
+                daySelect.appendChild(opt);
+            }
+
+            document.getElementById('add-attendance-modal').classList.remove('hidden');
+        }
+
+        function closeAddAttendanceModal() {
+            document.getElementById('add-attendance-modal').classList.add('hidden');
+        }
+
+        function saveNewAttendance(e) {
+            e.preventDefault();
+            const docId = parseInt(document.getElementById('add-att-doc-id').value);
+            const day = parseInt(document.getElementById('add-att-day').value);
+            const datang = document.getElementById('add-att-datang').value.trim();
+            const pulang = document.getElementById('add-att-pulang').value.trim();
+            const isPuskesmas = document.getElementById('add-att-puskesmas').checked;
+
+            let doc = doctorsState.find(d => d.id === docId);
+            if (doc) {
+                const periodAtt = getDoctorPeriodAttendance(doc);
+                const existing = periodAtt.find(a => a.day === day);
+                if (existing) {
+                    existing.datang = datang;
+                    existing.pulang = pulang;
+                    existing.isPuskesmas = isPuskesmas;
+                } else {
+                    periodAtt.push({ day, datang, pulang, isPuskesmas });
+                }
+
+                localStorage.setItem('medika_doctors_data', JSON.stringify(doctorsState));
+                closeAddAttendanceModal();
+                renderApp();
+                showToast(`Shift ${monthNames[selectedMonth]} ${selectedYear} berhasil ditambahkan!`);
+            }
+        }
+
+        // ================= SPREADSHEET PARSER & SYNC LOGIC =================
+        function parseSpreadsheetRowsToSchedules(rows) {
+            const parsedUnits = [];
+            let currentUnit = null;
+            let currentCategory = '';
+
+            const mapClinicName = (rawName) => {
+                const upper = rawName.toUpperCase().trim();
+                if (upper.includes('CAKUNG')) return { name: 'Klinik Mitra Cakung (CKG)', code: 'CKG' };
+                if (upper.includes('MITRA MEDIKA')) return { name: 'Klinik Mitra Medika (MM)', code: 'MM' };
+                if (upper.includes('MGM')) return { name: 'Klinik MGM 24', code: 'MGM24' };
+                if (upper.includes('CITRA MEDIKA')) return { name: 'Klinik Citra Medika (CTM)', code: 'CTM' };
+                if (upper.includes('PRIMA MEDIKA')) return { name: 'Klinik Prima Medika (PM)', code: 'PM' };
+                if (upper.includes('JATINEGARA')) return { name: 'Klinik Mitra Jatinegara (MJ)', code: 'MJ' };
+                if (upper.includes('PRATAMA MEDIKA')) return { name: 'Klinik Pratama Medika', code: 'PRATAMA' };
+                return { name: rawName.trim(), code: rawName.trim().substring(0, 6).toUpperCase() };
+            };
+
+            rows.forEach((row, idx) => {
+                const col0 = (row[0] !== undefined && row[0] !== null) ? String(row[0]).trim() : '';
+                const col1 = (row[1] !== undefined && row[1] !== null) ? String(row[1]).trim() : '';
+                const days = [2, 3, 4, 5, 6, 7, 8].map(i => (row[i] !== undefined && row[i] !== null && String(row[i]).trim() !== '') ? String(row[i]).trim() : '-');
+
+                if (idx === 0 && col0.toUpperCase().includes('KLINIK')) {
+                    const mapped = mapClinicName(col0);
+                    currentUnit = { clinicName: mapped.name, code: mapped.code, schedules: [] };
+                    parsedUnits.push(currentUnit);
+                    return;
+                }
+
+                if (col0.toUpperCase().startsWith('KLINIK') && !col1) {
+                    const mapped = mapClinicName(col0);
+                    currentUnit = { clinicName: mapped.name, code: mapped.code, schedules: [] };
+                    parsedUnits.push(currentUnit);
+                    currentCategory = '';
+                    return;
+                }
+
+                if (col0.toLowerCase() === 'dokter' && col1.toLowerCase() === 'jam') return;
+                if (!col1 && days.every(d => d === '-')) return;
+
+                if (col0) currentCategory = col0;
+                if (!currentUnit) {
+                    currentUnit = { clinicName: 'Klinik Pratama Medika', code: 'PRATAMA', schedules: [] };
+                    parsedUnits.push(currentUnit);
+                }
+
+                if (currentCategory && col1) {
+                    currentUnit.schedules.push({
+                        category: currentCategory,
+                        time: col1,
+                        senin: days[0],
+                        selasa: days[1],
+                        rabu: days[2],
+                        kamis: days[3],
+                        jumat: days[4],
+                        sabtu: days[5],
+                        minggu: days[6]
+                    });
+                }
+            });
+
+            return parsedUnits.filter(u => u.schedules.length > 0);
+        }
+
+        // Parser Khusus File Rekap Absensi Dokter (Mendukung matriks Tanggal 1-31 Datang/Pulang atau baris datar)
+        function parseSpreadsheetRowsToAttendance(rows) {
+            if (!rows || rows.length < 2) return [];
+            const periodKey = getPeriodKey();
+            const parsedDoctors = [];
+            let dayColMap = {}; // { dayNumber: { datangCol, pulangCol } }
+            let nameCol = -1, posCol = -1, statusCol = -1, clinicCol = -1, ketCol = -1;
+            let headerRowIdx = -1;
+
+            // Cari baris header yang memuat "Nama" atau angka tanggal 1..31
+            for (let r = 0; r < Math.min(rows.length, 15); r++) {
+                const row = rows[r] || [];
+                const rowLower = row.map(c => String(c || '').toLowerCase().trim());
+                const foundNameIdx = rowLower.findIndex(c => c.includes('nama'));
+                if (foundNameIdx !== -1) {
+                    headerRowIdx = r;
+                    nameCol = foundNameIdx;
+                    posCol = rowLower.findIndex(c => c.includes('poli') || c.includes('posisi') || c.includes('jabatan') || c.includes('jenis'));
+                    statusCol = rowLower.findIndex(c => c.includes('status'));
+                    clinicCol = rowLower.findIndex(c => c.includes('klinik') || c.includes('unit') || c.includes('cabang'));
+                    ketCol = rowLower.findIndex(c => c.includes('ket') || c.includes('catatan') || c.includes('alasan'));
+
+                    // Deteksi kolom tanggal (1 - 31) pada baris header ini atau baris di bawahnya
+                    for (let c = 0; c < row.length; c++) {
+                        const cellVal = String(row[c] || '').trim();
+                        const numMatch = cellVal.match(/^(\d{1,2})$/);
+                        if (numMatch) {
+                            const d = parseInt(numMatch[1]);
+                            if (d >= 1 && d <= 31) {
+                                dayColMap[d] = { datangCol: c, pulangCol: c + 1 };
+                            }
+                        }
+                    }
+                    break;
+                }
+            }
+
+            if (headerRowIdx === -1 || nameCol === -1) return [];
+
+            // Cek apakah baris di bawah header adalah sub-header "Datang" / "Pulang"
+            let startDataRow = headerRowIdx + 1;
+            const nextRow = (rows[startDataRow] || []).map(c => String(c || '').toLowerCase().trim());
+            if (nextRow.some(c => c === 'datang' || c === 'masuk' || c === 'in')) {
+                startDataRow++;
+            }
+
+            let nextId = 1;
+            for (let r = startDataRow; r < rows.length; r++) {
+                const row = rows[r] || [];
+                const rawName = String(row[nameCol] || '').trim();
+                if (!rawName || rawName.toLowerCase() === 'total' || rawName.toLowerCase().includes('jumlah')) continue;
+
+                const rawPos = posCol !== -1 ? String(row[posCol] || '').trim() : '';
+                const position = rawPos.toLowerCase().includes('gigi') || rawName.toLowerCase().startsWith('drg') ? 'Dokter Gigi' : 'Dokter Umum';
+                const rawStatus = statusCol !== -1 ? String(row[statusCol] || '').trim() : 'Tetap';
+                const status = rawStatus.toLowerCase().includes('pengganti') ? 'Pengganti' : 'Tetap';
+                const clinic = clinicCol !== -1 && row[clinicCol] ? String(row[clinicCol]).trim().toUpperCase() : 'CKG';
+                const ket = ketCol !== -1 && row[ketCol] ? String(row[ketCol]).trim() : '';
+
+                const attendanceList = [];
+                Object.keys(dayColMap).forEach(dayStr => {
+                    const dayNum = parseInt(dayStr);
+                    const cols = dayColMap[dayNum];
+                    const dVal = row[cols.datangCol] !== undefined && row[cols.datangCol] !== null ? String(row[cols.datangCol]).trim() : '';
+                    const pVal = row[cols.pulangCol] !== undefined && row[cols.pulangCol] !== null ? String(row[cols.pulangCol]).trim() : '';
+                    if ((dVal && dVal !== '-' && dVal !== '0') || (pVal && pVal !== '-' && pVal !== '0')) {
+                        attendanceList.push({
+                            day: dayNum,
+                            datang: dVal,
+                            pulang: pVal
+                        });
+                    }
+                });
+
+                // Cek apakah dokter sudah ada di doctorsState berdasarkan nama & klinik agar periode lain tidak tertimpa
+                let existingDoc = doctorsState.find(d => d.name.toLowerCase() === rawName.toLowerCase() && d.clinic.toUpperCase() === clinic);
+                if (existingDoc) {
+                    existingDoc.position = position;
+                    existingDoc.status = status;
+                    if (ket) existingDoc.ket = ket;
+                    if (!existingDoc.attendanceByPeriod) existingDoc.attendanceByPeriod = {};
+                    existingDoc.attendanceByPeriod[periodKey] = attendanceList;
+                    parsedDoctors.push(existingDoc);
+                } else {
+                    const newDoc = {
+                        id: Date.now() + nextId++,
+                        name: rawName,
+                        position,
+                        status,
+                        clinic,
+                        ket,
+                        attendanceByPeriod: {
+                            [periodKey]: attendanceList
+                        }
+                    };
+                    parsedDoctors.push(newDoc);
+                }
+            }
+
+            return parsedDoctors;
+        }
+
+        function switchSyncSubtab(subtab) {
+            const panelAbsen = document.getElementById('sync-panel-absen');
+            const panelJadwal = document.getElementById('sync-panel-jadwal');
+            const btnAbsen = document.getElementById('sync-subtab-absen');
+            const btnJadwal = document.getElementById('sync-subtab-jadwal');
+
+            document.getElementById('sync-absen-target-period').textContent = `${monthNames[selectedMonth]} ${selectedYear}`;
+
+            if (subtab === 'absen') {
+                panelAbsen.classList.remove('hidden');
+                panelJadwal.classList.add('hidden');
+                btnAbsen.className = 'py-2 px-3 rounded-lg text-xs font-bold transition bg-white text-emerald-800 shadow-sm flex items-center justify-center gap-1.5';
+                btnJadwal.className = 'py-2 px-3 rounded-lg text-xs font-bold transition text-slate-600 hover:text-slate-900 flex items-center justify-center gap-1.5';
+            } else {
+                panelJadwal.classList.remove('hidden');
+                panelAbsen.classList.add('hidden');
+                btnJadwal.className = 'py-2 px-3 rounded-lg text-xs font-bold transition bg-white text-indigo-800 shadow-sm flex items-center justify-center gap-1.5';
+                btnAbsen.className = 'py-2 px-3 rounded-lg text-xs font-bold transition text-slate-600 hover:text-slate-900 flex items-center justify-center gap-1.5';
+            }
+        }
+
+        function openSyncModal(defaultTab = 'absen') {
+            const savedJadwalUrl = localStorage.getItem('medika_gsheet_raw_url') || localStorage.getItem('medika_gsheet_url') || '';
+            const savedAbsenUrl = localStorage.getItem('medika_absen_gsheet_raw_url') || localStorage.getItem('medika_absen_gsheet_url') || '';
+            document.getElementById('gsheet-csv-url').value = savedJadwalUrl;
+            document.getElementById('gsheet-absen-url').value = savedAbsenUrl;
+            document.getElementById('gsheet-auto-poll').checked = localStorage.getItem('medika_gsheet_autopoll') !== 'false';
+            document.getElementById('gsheet-absen-autopoll').checked = localStorage.getItem('medika_absen_gsheet_autopoll') !== 'false';
+            switchSyncSubtab(defaultTab);
+            document.getElementById('sync-modal').classList.remove('hidden');
+        }
+
+        function closeSyncModal() {
+            document.getElementById('sync-modal').classList.add('hidden');
+        }
+
+        function normalizeGoogleSheetUrl(rawUrl) {
+            let url = rawUrl.trim();
+            // Jika sudah merupakan link pub?output=csv atau gviz/tq?tqx=out:csv, kembalikan langsung
+            if (url.includes('output=csv') || url.includes('tqx=out:csv') || url.includes('format=csv')) {
+                return url;
+            }
+            // Ekstrak Spreadsheet ID dan gid (jika ada) dari URL Google Sheets standar
+            const idMatch = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+            const gidMatch = url.match(/[#&?]gid=([0-9]+)/);
+            if (idMatch && idMatch[1]) {
+                const sheetId = idMatch[1];
+                const gidParam = gidMatch && gidMatch[1] ? `&gid=${gidMatch[1]}` : '';
+                // Endpoint gviz/tq sangat andal untuk menarik CSV dari sheet yang dibagikan publik
+                return `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv${gidParam}`;
+            }
+            return url;
+        }
+
+        async function fetchCsvWithFallback(targetUrl) {
+            const separator = targetUrl.includes('?') ? '&' : '?';
+            const freshUrl = `${targetUrl}${separator}_t=${Date.now()}`;
+
+            // Percobaan 1: Fetch langsung ke Google Sheets
+            try {
+                const res = await fetch(freshUrl, { mode: 'cors', redirect: 'follow' });
+                if (res.ok) {
+                    const text = await res.text();
+                    if (text && !text.trim().startsWith('<!DOCTYPE html>')) {
+                        return text;
+                    }
+                }
+            } catch (e) {
+                // Lanjut ke fallback proxy jika diblokir CORS (misalnya saat dibuka dari file:// lokal)
+            }
+
+            // Percobaan 2: Fallback CORS Proxy (AllOrigins)
+            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(freshUrl)}`;
+            const proxyRes = await fetch(proxyUrl);
+            if (!proxyRes.ok) throw new Error('Gagal terhubung melalui jalur cadangan');
+            const proxyText = await proxyRes.text();
+            if (!proxyText || proxyText.trim().startsWith('<!DOCTYPE html>')) {
+                throw new Error('Link mengembalikan halaman login HTML, bukan data CSV');
+            }
+            return proxyText;
+        }
+
+        // --- KONEKSI GOOGLE SHEET ABSENSI ---
+        async function connectAbsenGoogleSheet() {
+            let rawUrl = document.getElementById('gsheet-absen-url').value.trim();
+            if (!rawUrl) {
+                showToast('Masukkan link Google Sheets Rekap Absensi terlebih dahulu.', true);
+                return;
+            }
+            const normalizedUrl = normalizeGoogleSheetUrl(rawUrl);
+            const autoPoll = document.getElementById('gsheet-absen-autopoll').checked;
+            localStorage.setItem('medika_absen_gsheet_url', normalizedUrl);
+            localStorage.setItem('medika_absen_gsheet_raw_url', rawUrl);
+            localStorage.setItem('medika_absen_gsheet_autopoll', autoPoll);
+
+            const success = await syncAbsenFromGoogleSheet(true);
+            if (success) {
+                closeSyncModal();
+                setupAutoPolling();
+            } else {
+                localStorage.removeItem('medika_absen_gsheet_url');
+            }
+        }
+
+        function disconnectAbsenGoogleSheet() {
+            localStorage.removeItem('medika_absen_gsheet_url');
+            localStorage.removeItem('medika_absen_gsheet_raw_url');
+            localStorage.removeItem('medika_absen_gsheet_autopoll');
+            if (absenSyncIntervalTimer) clearInterval(absenSyncIntervalTimer);
+            updateSyncStatusUI();
+            closeSyncModal();
+            showToast('Koneksi Google Sheets Absensi diputuskan.');
+        }
+
+        async function syncAbsenFromGoogleSheet(notify = false) {
+            const url = localStorage.getItem('medika_absen_gsheet_url');
+            if (!url) return false;
+
+            try {
+                const csvText = await fetchCsvWithFallback(url);
+                const workbook = XLSX.read(csvText, { type: 'string' });
+                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+
+                const parsedDocs = parseSpreadsheetRowsToAttendance(rows);
+                if (parsedDocs.length === 0) throw new Error('Kolom Nama Dokter & tanggal absensi tidak ditemukan di sheet tersebut.');
+
+                // Gabungkan dokter yang diperbarui ke doctorsState
+                parsedDocs.forEach(pDoc => {
+                    const idx = doctorsState.findIndex(d => d.id === pDoc.id);
+                    if (idx !== -1) doctorsState[idx] = pDoc;
+                    else doctorsState.push(pDoc);
+                });
+
+                localStorage.setItem('medika_doctors_data', JSON.stringify(doctorsState));
+                localStorage.setItem('medika_absen_sync_source', 'Google Sheets Absensi Live');
+                localStorage.setItem('medika_absen_sync_time', new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
+
+                renderApp();
+                updateSyncStatusUI();
+                if (notify) showToast(`Rekap Absensi (${parsedDocs.length} dokter) berhasil disinkronkan!`);
+                return true;
+            } catch (err) {
+                console.error('Absen Sync Error:', err);
+                if (notify) {
+                    showToast('Gagal sinkron Absensi: Pastikan link Google Sheet terbuka publik (Siapa saja yang memiliki link) dan memiliki kolom Nama serta tanggal.', true);
+                }
+                return false;
+            }
+        }
+
+        function handleLocalAbsenExcelUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+
+                    const parsedDocs = parseSpreadsheetRowsToAttendance(rows);
+                    if (parsedDocs.length === 0) {
+                        showToast('Format tabel Excel absensi tidak dikenali (pastikan ada kolom Nama & tanggal).', true);
+                        return;
+                    }
+
+                    parsedDocs.forEach(pDoc => {
+                        const idx = doctorsState.findIndex(d => d.id === pDoc.id);
+                        if (idx !== -1) doctorsState[idx] = pDoc;
+                        else doctorsState.push(pDoc);
+                    });
+
+                    localStorage.setItem('medika_doctors_data', JSON.stringify(doctorsState));
+                    localStorage.setItem('medika_absen_sync_source', `File Excel (${file.name})`);
+                    localStorage.setItem('medika_absen_sync_time', new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
+
+                    renderApp();
+                    updateSyncStatusUI();
+                    closeSyncModal();
+                    showToast(`Absensi dari "${file.name}" (${parsedDocs.length} dokter) berhasil dimuat!`);
+                } catch (err) {
+                    showToast('Gagal membaca file Excel/CSV absensi.', true);
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        // --- KONEKSI GOOGLE SHEET JADWAL TETAP ---
+        async function connectGoogleSheet() {
+            let rawUrl = document.getElementById('gsheet-csv-url').value.trim();
+            if (!rawUrl) {
+                showToast('Masukkan link Google Sheets terlebih dahulu.', true);
+                return;
+            }
+            const normalizedUrl = normalizeGoogleSheetUrl(rawUrl);
+            const autoPoll = document.getElementById('gsheet-auto-poll').checked;
+            localStorage.setItem('medika_gsheet_url', normalizedUrl);
+            localStorage.setItem('medika_gsheet_raw_url', rawUrl);
+            localStorage.setItem('medika_gsheet_autopoll', autoPoll);
+
+            const success = await syncFromGoogleSheet(true);
+            if (success) {
+                closeSyncModal();
+                setupAutoPolling();
+            } else {
+                // Hapus penyimpanan jika koneksi awal gagal agar tidak terjebak error
+                localStorage.removeItem('medika_gsheet_url');
+            }
+        }
+
+        function disconnectGoogleSheet() {
+            localStorage.removeItem('medika_gsheet_url');
+            localStorage.removeItem('medika_gsheet_raw_url');
+            localStorage.removeItem('medika_gsheet_autopoll');
+            if (syncIntervalTimer) clearInterval(syncIntervalTimer);
+            updateSyncStatusUI();
+            closeSyncModal();
+            showToast('Koneksi Google Sheets diputuskan.');
+        }
+
+        async function syncFromGoogleSheet(notify = false) {
+            const url = localStorage.getItem('medika_gsheet_url');
+            if (!url) return false;
+
+            try {
+                const csvText = await fetchCsvWithFallback(url);
+
+                const workbook = XLSX.read(csvText, { type: 'string' });
+                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+
+                const parsed = parseSpreadsheetRowsToSchedules(rows);
+                if (parsed.length === 0) throw new Error('Struktur baris/kolom jadwal tidak ditemukan di sheet tersebut.');
+
+                fixedSchedulesDataset = parsed;
+                localStorage.setItem('medika_schedules_data', JSON.stringify(fixedSchedulesDataset));
+                localStorage.setItem('medika_sync_source', 'Google Sheets Live');
+                localStorage.setItem('medika_sync_time', new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
+
+                initFilters();
+                renderFixedSchedules();
+                updateSyncStatusUI();
+                if (notify) showToast('Jadwal berhasil disinkronkan dari Google Sheets!');
+                return true;
+            } catch (err) {
+                console.error('Sync Error:', err);
+                if (notify) {
+                    showToast('Gagal sinkron: Pastikan akses Google Sheet disetel "Siapa saja yang memiliki link" atau sudah "Publikasikan ke web (CSV)".', true);
+                }
+                return false;
+            }
+        }
+
+        function handleLocalExcelUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+
+                    const parsed = parseSpreadsheetRowsToSchedules(rows);
+                    if (parsed.length === 0) {
+                        showToast('Struktur tabel Excel tidak dikenali.', true);
+                        return;
+                    }
+
+                    fixedSchedulesDataset = parsed;
+                    localStorage.setItem('medika_schedules_data', JSON.stringify(fixedSchedulesDataset));
+                    localStorage.setItem('medika_sync_source', `File Excel (${file.name})`);
+                    localStorage.setItem('medika_sync_time', new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
+
+                    initFilters();
+                    renderFixedSchedules();
+                    updateSyncStatusUI();
+                    closeSyncModal();
+                    showToast(`Jadwal dari "${file.name}" berhasil dimuat!`);
+                } catch (err) {
+                    showToast('Gagal membaca file Excel/CSV.', true);
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function updateSyncStatusUI() {
+            // Status Jadwal Tetap
+            const url = localStorage.getItem('medika_gsheet_url');
+            const sourceLabel = document.getElementById('sync-source-label');
+            const timeLabel = document.getElementById('sync-last-updated');
+            const refreshBtn = document.getElementById('btn-manual-refresh');
+
+            if (url) {
+                sourceLabel.textContent = 'Google Sheets Jadwal Live (Terhubung)';
+                refreshBtn.classList.remove('hidden');
+            } else {
+                sourceLabel.textContent = localStorage.getItem('medika_sync_source') || 'Dataset Bawaan (Lokal)';
+                refreshBtn.classList.add('hidden');
+            }
+
+            const lastTime = localStorage.getItem('medika_sync_time');
+            timeLabel.textContent = lastTime ? `• Terakhir diperbarui pukul ${lastTime}` : '';
+
+            // Status Rekap Absensi
+            const absenUrl = localStorage.getItem('medika_absen_gsheet_url');
+            const absenSourceLabel = document.getElementById('absen-sync-source-label');
+            const absenTimeLabel = document.getElementById('absen-sync-last-updated');
+            const absenRefreshBtn = document.getElementById('btn-manual-refresh-absen');
+
+            if (absenUrl) {
+                absenSourceLabel.textContent = 'Google Sheets Absensi Live (Terhubung)';
+                absenRefreshBtn.classList.remove('hidden');
+            } else {
+                absenSourceLabel.textContent = localStorage.getItem('medika_absen_sync_source') || 'Dataset Bawaan (Lokal)';
+                absenRefreshBtn.classList.add('hidden');
+            }
+
+            const lastAbsenTime = localStorage.getItem('medika_absen_sync_time');
+            absenTimeLabel.textContent = lastAbsenTime ? `• Terakhir diperbarui pukul ${lastAbsenTime}` : '';
+        }
+
+        function setupAutoPolling() {
+            if (syncIntervalTimer) clearInterval(syncIntervalTimer);
+            const url = localStorage.getItem('medika_gsheet_url');
+            const autoPoll = localStorage.getItem('medika_gsheet_autopoll') !== 'false';
+            if (url && autoPoll) {
+                syncIntervalTimer = setInterval(() => {
+                    syncFromGoogleSheet(false);
+                }, 60000);
+            }
+
+            if (absenSyncIntervalTimer) clearInterval(absenSyncIntervalTimer);
+            const absenUrl = localStorage.getItem('medika_absen_gsheet_url');
+            const absenAutoPoll = localStorage.getItem('medika_absen_gsheet_autopoll') !== 'false';
+            if (absenUrl && absenAutoPoll) {
+                absenSyncIntervalTimer = setInterval(() => {
+                    syncAbsenFromGoogleSheet(false);
+                }, 60000);
+            }
+        }
+
+        function openResetModal() {
+            document.getElementById('reset-confirm-modal').classList.remove('hidden');
+        }
+
+        function closeResetModal() {
+            document.getElementById('reset-confirm-modal').classList.add('hidden');
+        }
+
+        function confirmResetData() {
+            localStorage.removeItem('medika_doctors_data');
+            localStorage.removeItem('medika_schedules_data');
+            localStorage.removeItem('medika_sync_source');
+            localStorage.removeItem('medika_sync_time');
+            localStorage.removeItem('medika_absen_sync_source');
+            localStorage.removeItem('medika_absen_sync_time');
+            doctorsState = JSON.parse(JSON.stringify(rawDoctorDataset));
+            ensureMultiPeriodStructure();
+            fixedSchedulesDataset = JSON.parse(JSON.stringify(defaultFixedSchedulesDataset));
+            selectedClinic = 'ALL';
+            selectedScheduleClinic = 'ALL';
+            initFilters();
+            renderApp();
+            renderFixedSchedules();
+            updateSyncStatusUI();
+            closeResetModal();
+            showToast('Seluruh data berhasil dikembalikan ke versi awal.');
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            initFilters();
+            renderApp();
+            updateSyncStatusUI();
+            if (localStorage.getItem('medika_gsheet_url')) {
+                syncFromGoogleSheet(false);
+            }
+            if (localStorage.getItem('medika_absen_gsheet_url')) {
+                syncAbsenFromGoogleSheet(false);
+            }
+            setupAutoPolling();
+        });
+    </script>
+</body>
+</html>
